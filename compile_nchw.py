@@ -18,7 +18,7 @@ Then inside container:
 """
 
 import os
-from qubee import mxq_compile
+from qbcompiler import mxq_compile
 
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 CALIB_TXT = os.path.join(BASE_DIR, "calib_nchw.txt")
