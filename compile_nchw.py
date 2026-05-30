@@ -49,7 +49,7 @@ for onnx_path, mxq_path in MODELS:
         in_dformats={"input": "NCHW"},
         cpu_offload=True,
         quantize_method="Percentile",
-        quantize_percentile=0.99995,
+        quantize_percentile=0.99999,  # was 0.99995 — too aggressive for GELU/attention
         is_quant_ch=True,
     )
 

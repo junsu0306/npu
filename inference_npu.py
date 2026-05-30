@@ -10,11 +10,12 @@ compile_nchw.py로 생성한 .mxq 파일 사용.
   EfficientViT: CHW (C,H,W) — cpu_offload=True + in_dformats="NCHW" 컴파일
 
 사용법:
-  python3 inference_npu.py --model efficientvit_b0_r224_nchw.mxq --image cat.jpg
+  cd ..
+  source aries_env/bin/activate
+  python3 inference_npu.py --model efficientvit_b0_r224_nchw.mxq --image val_example.JPEG --labels imagenet_labels.txt 
   python3 inference_npu.py --model efficientvit_b0_r224_nchw.mxq --benchmark
   python3 inference_npu.py --model efficientvit_b0_r224_nchw.mxq --val_dir /data/imagenet/val
 """
-
 import argparse
 import time
 import os
