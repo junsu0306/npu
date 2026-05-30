@@ -31,15 +31,18 @@ import onnx
 import numpy as np
 
 # ─── 설정 ────────────────────────────────────────────────────────────────────
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))          # .../npu/compile
+ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
+
 MODELS = [
-    ("efficientvit_b0.r224_in1k", "efficientvit_b0_r224_nchw.onnx"),
-    ("efficientvit_b1.r224_in1k", "efficientvit_b1_r224_nchw.onnx"),
+    ("efficientvit_b0.r224_in1k", os.path.join(ASSETS_DIR, "onnx", "efficientvit_b0_r224_nchw.onnx")),
+    ("efficientvit_b1.r224_in1k", os.path.join(ASSETS_DIR, "onnx", "efficientvit_b1_r224_nchw.onnx")),
 ]
-CALIB_SAVE_DIR = "calib_nchw"
-CALIB_TXT = "calib_nchw.txt"
+CALIB_SAVE_DIR = os.path.join(ASSETS_DIR, "calib_nchw")
+CALIB_TXT      = os.path.join(BASE_DIR, "calib_nchw.txt")
 
 # 기존 HWC 캘리브레이션 txt (없으면 랜덤 생성)
-EXISTING_CALIB_TXT = "calib_nhwc_final/imagenet_nhwc.txt"
+EXISTING_CALIB_TXT = os.path.join(ASSETS_DIR, "imagenet_calib", "imagenet_nhwc.txt")
 
 # ─── 1단계: ONNX Export ───────────────────────────────────────────────────────
 dummy_input = torch.randn(1, 3, 224, 224)

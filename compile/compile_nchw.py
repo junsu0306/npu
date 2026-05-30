@@ -8,29 +8,36 @@ Key settings (confirmed working in QUANTIZE_ISSUE_SUMMARY_KR.md):
   - in_dformats={"input": "NCHW"}  : standard NCHW ONNX, no NHWC conversion
   - cpu_offload=True               : required for EfficientViT unsupported ops
 
-Docker run (mount host path at same absolute path so calib_nchw.txt paths resolve):
+Directory layout (relative to npu/):
+  compile/compile_nchw.py   ← this file
+  compile/calib_nchw.txt    ← calibration file list (paths inside Docker)
+  assets/onnx/*.onnx        ← input models
+  assets/*.mxq              ← output compiled models
+
+Docker run (mount host npu/ so that calib_nchw.txt absolute paths resolve):
   docker run -it --ipc=host --name qbcompiler \
     -v /home/airlab_compression/npu:/home/airlab_compression/npu \
     mobilint/qbcompiler:v0.9.0.2 /bin/bash
 
 Then inside container:
-  python3 /home/airlab_compression/npu/compile_nchw.py
+  python3 /home/airlab_compression/npu/compile/compile_nchw.py
 """
 
 import os
 from qbcompiler import mxq_compile
 
-BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
-CALIB_TXT = os.path.join(BASE_DIR, "calib_nchw.txt")
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))          # .../npu/compile
+ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
+CALIB_TXT  = os.path.join(BASE_DIR, "calib_nchw.txt")
 
 MODELS = [
     (
-        os.path.join(BASE_DIR, "efficientvit_b0_r224_nchw.onnx"),
-        os.path.join(BASE_DIR, "efficientvit_b0_r224_nchw.mxq"),
+        os.path.join(ASSETS_DIR, "onnx", "efficientvit_b0_r224_nchw.onnx"),
+        os.path.join(ASSETS_DIR, "efficientvit_b0_r224_nchw.mxq"),
     ),
     (
-        os.path.join(BASE_DIR, "efficientvit_b1_r224_nchw.onnx"),
-        os.path.join(BASE_DIR, "efficientvit_b1_r224_nchw.mxq"),
+        os.path.join(ASSETS_DIR, "onnx", "efficientvit_b1_r224_nchw.onnx"),
+        os.path.join(ASSETS_DIR, "efficientvit_b1_r224_nchw.mxq"),
     ),
 ]
 
