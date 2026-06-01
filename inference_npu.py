@@ -5,17 +5,16 @@ EfficientViT NPU Inference (qbruntime)
 infer_resnet50.py 예시 기반으로 작성.
 compile_nchw.py로 생성한 .mxq 파일 사용.
 
-전처리 차이 (resnet50 예시 vs 이 스크립트):
-  resnet50: HWC (H,W,C) — cpu_offload=False 컴파일
-  EfficientViT: CHW (C,H,W) — cpu_offload=True + in_dformats="NCHW" 컴파일
+전처리: resnet50 예시와 동일하게 HWC (H,W,C) — NPU 네이티브 포맷.
+  in_dformats="NCHW" 제거로 컴파일러가 CPU/NPU 경계에 올바른 레이아웃 변환 삽입.
 
 사용법:
   cd /home/airlab_compression
   source aries_env/bin/activate
   cd npu/
-  python3 inference_npu.py --model assets/efficientvit_b0_r224_nchw.mxq --image val_example.JPEG --labels imagenet_classes.txt
-  python3 inference_npu.py --model assets/efficientvit_b0_r224_nchw.mxq --benchmark
-  python3 inference_npu.py --model assets/efficientvit_b0_r224_nchw.mxq --val_dir /data/imagenet/val
+  python3 inference_npu.py --model assets/mxq/efficientvit_b0_r224_nchw.mxq --image val_example.JPEG --labels imagenet_classes.txt
+  python3 inference_npu.py --model assets/mxq/efficientvit_b0_r224_nchw.mxq --benchmark
+  python3 inference_npu.py --model assets/mxq/efficientvit_b0_r224_nchw.mxq --val_dir /data/imagenet/val
 """
 import argparse
 import time
@@ -31,13 +30,7 @@ STD  = np.float32([0.229, 0.224, 0.225])
 
 
 def preprocess(image_path: str) -> np.ndarray:
-    """
-    이미지 → CHW float32 배열 (compile_nchw.py 캘리브레이션 전처리와 동일)
-
-    resnet50 예시와의 차이:
-      resnet50: HWC (224,224,3) — 비cpu_offload 컴파일
-      EfficientViT: CHW (3,224,224) — NCHW cpu_offload 컴파일
-    """
+    """이미지 → HWC float32 배열 (224,224,3) — NPU 네이티브 입력 포맷"""
     img = cv2.imread(image_path, cv2.IMREAD_COLOR)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
@@ -52,12 +45,8 @@ def preprocess(image_path: str) -> np.ndarray:
     left = (w - 224) // 2
     img = img[top:top+224, left:left+224]
 
-    # float32 정규화
     img = img.astype(np.float32) / 255.0
     img = (img - MEAN) / STD              # (224, 224, 3) HWC
-
-    # HWC → CHW (NCHW 컴파일 모델에 맞춰 채널 먼저)
-    img = img.transpose(2, 0, 1)          # (3, 224, 224)
     return img
 
 
@@ -75,7 +64,7 @@ class EfficientViTNPU:
         print(f"[NPU] 로드 완료: {mxq_path}")
 
     def infer(self, img: np.ndarray) -> np.ndarray:
-        """img: CHW (3,224,224) float32 → logits (1000,)"""
+        """img: HWC (224,224,3) float32 → logits (1000,)"""
         result = self.model.infer([img])
         return result[0].flatten()
 
@@ -115,7 +104,7 @@ def run_single(model: EfficientViTNPU, image_path: str, labels: list, top_k: int
 
 
 def run_benchmark(model: EfficientViTNPU, n_iter: int = 200):
-    dummy = np.random.randn(3, 224, 224).astype(np.float32)
+    dummy = np.random.randn(224, 224, 3).astype(np.float32)
 
     # 워밍업
     for _ in range(10):
