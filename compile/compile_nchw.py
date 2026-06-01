@@ -5,22 +5,19 @@ Runs inside the Mobilint qbcompiler Docker container.
 
 Key settings:
   - backend="onnx"
-  - in_dformats omitted : NPU works natively in HWC (NHWC); omitting lets the
-      compiler insert correct NCHW↔NHWC transposes at every CPU/NPU boundary.
-      Setting in_dformats="NCHW" skips those boundary transposes, causing
-      catastrophic accuracy loss when cpu_offload=True splits the graph.
+  - in_dformats="NCHW" : ONNX 모델 입력이 NCHW이므로 캘리브레이션도 CHW 포맷 사용.
+      컴파일러가 CPU/NPU 경계에서 NCHW↔NHWC 변환을 자동 삽입함.
   - cpu_offload=True    : required for EfficientViT unsupported ops (attention/GELU)
-  - calib_nhwc/         : HWC-ordered calibration data (transposed from calib_nchw/)
+  - calib_nchw/         : CHW-ordered calibration tensors (shape: [3, 224, 224])
 
 Directory layout (relative to npu/):
   compile/compile_nchw.py   ← this file
-  compile/calib_nhwc.txt    ← calibration file list (paths inside Docker)
+  compile/calib_nchw.txt    ← calibration file list (paths inside Docker)
   assets/calib_nchw/        ← CHW source calibration tensors
-  assets/calib_nhwc/        ← HWC calibration tensors (auto-generated below)
   assets/onnx/*.onnx        ← input models
   assets/mxq/*.mxq          ← output compiled models
 
-Docker run (mount host npu/ so that calib_nhwc.txt absolute paths resolve):
+Docker run (mount host npu/ so that calib_nchw.txt absolute paths resolve):
   docker run -it --ipc=host --name qbcompiler \
     -v /home/airlab_compression/npu:/home/airlab_compression/npu \
     mobilint/qbcompiler:v0.9.0.2 /bin/bash
@@ -31,37 +28,21 @@ Then inside container:
 
 import glob
 import os
-import numpy as np
 from qbcompiler import mxq_compile
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))          # .../npu/compile
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
 
-# NPU expects HWC (NHWC) input — transpose the existing CHW calibration files.
 CALIB_CHW_DIR = os.path.join(ASSETS_DIR, "calib_nchw")
-CALIB_HWC_DIR = os.path.join(ASSETS_DIR, "calib_nhwc")
-os.makedirs(CALIB_HWC_DIR, exist_ok=True)
 
 chw_files = sorted(glob.glob(os.path.join(CALIB_CHW_DIR, "*.npy")))
 if not chw_files:
     raise FileNotFoundError(f"No CHW calibration .npy files found in {CALIB_CHW_DIR}")
 
-hwc_files = sorted(glob.glob(os.path.join(CALIB_HWC_DIR, "*.npy")))
-if len(hwc_files) < len(chw_files):
-    print(f"Transposing {len(chw_files)} CHW→HWC calibration files...")
-    for chw_path in chw_files:
-        chw = np.load(chw_path)                        # (3, 224, 224)
-        hwc = chw.transpose(1, 2, 0)                   # (224, 224, 3)
-        dst = os.path.join(CALIB_HWC_DIR, os.path.basename(chw_path))
-        np.save(dst, hwc)
-    hwc_files = sorted(glob.glob(os.path.join(CALIB_HWC_DIR, "*.npy")))
-
-# Regenerate the calibration file list with paths resolved relative to this
-# script so it stays mount-independent across Docker environments.
-CALIB_TXT = os.path.join(BASE_DIR, "calib_nhwc.txt")
+CALIB_TXT = os.path.join(BASE_DIR, "calib_nchw.txt")
 with open(CALIB_TXT, "w") as f:
-    f.write("\n".join(hwc_files) + "\n")
-print(f"Calibration list: {len(hwc_files)} HWC files -> {CALIB_TXT}")
+    f.write("\n".join(chw_files) + "\n")
+print(f"Calibration list: {len(chw_files)} CHW files -> {CALIB_TXT}")
 
 MXQ_DIR = os.path.join(ASSETS_DIR, "mxq")
 os.makedirs(MXQ_DIR, exist_ok=True)
@@ -106,10 +87,9 @@ for onnx_path, mxq_path in MODELS:
         calib_data_path=CALIB_TXT,
         save_path=mxq_path,
         backend="onnx",
-        # in_dformats intentionally omitted: NPU default is HWC (NHWC).
-        # Specifying NCHW prevents the compiler from inserting the required
-        # format-transpose ops at CPU/NPU boundaries (cpu_offload splits the
-        # graph), causing catastrophic accuracy loss.
+        # in_dformats 생략: 컴파일러가 HWC 기본값으로 cpu_offload 경계마다
+        # NCHW↔NHWC 변환 op을 자동 삽입하도록 함. "NCHW" 지정 시 경계 변환이
+        # 생략되어 NPU에 NCHW 데이터가 그대로 전달되어 결과가 깨짐.
         cpu_offload=True,
         quantize_method="Percentile",
         quantize_percentile=0.99999,
