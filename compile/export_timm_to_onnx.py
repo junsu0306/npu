@@ -93,34 +93,38 @@ for model_name, onnx_path in MODELS:
 
     print(f"  저장 완료: {onnx_path}")
 
-# ─── 2단계: 캘리브레이션 데이터 생성 (CHW 형식) ─────────────────────────────
+# ─── 2단계: 캘리브레이션 데이터 txt 생성 ────────────────────────────────────
 print(f"\n{'='*60}")
-print(f"캘리브레이션 데이터 생성 (NCHW용 CHW 형식)")
+print(f"캘리브레이션 데이터 확인")
 print(f"{'='*60}")
 
+import glob as _glob
 os.makedirs(CALIB_SAVE_DIR, exist_ok=True)
-calib_paths = []
 
-if os.path.exists(EXISTING_CALIB_TXT):
-    # 기존 HWC 데이터를 CHW로 변환
+existing = sorted(_glob.glob(os.path.join(CALIB_SAVE_DIR, "*.npy")))
+if existing:
+    # calib_nchw/ 에 이미 CHW .npy 파일이 있으면 그대로 사용
+    calib_paths = existing
+    print(f"기존 CHW 캘리브레이션 데이터 사용: {len(calib_paths)}개 ({CALIB_SAVE_DIR})")
+elif os.path.exists(EXISTING_CALIB_TXT):
+    # HWC txt가 있으면 CHW로 변환
     print(f"기존 HWC 데이터 변환: {EXISTING_CALIB_TXT}")
     with open(EXISTING_CALIB_TXT) as f:
         src_paths = [l.strip() for l in f if l.strip()]
-
+    calib_paths = []
     for i, src_path in enumerate(src_paths):
-        arr_hwc = np.load(src_path)           # (224, 224, 3) HWC float32
-        arr_chw = arr_hwc.transpose(2, 0, 1)  # (3, 224, 224) CHW
+        arr_hwc = np.load(src_path)
+        arr_chw = arr_hwc.transpose(2, 0, 1)
         save_path = os.path.join(CALIB_SAVE_DIR, f"{i:04d}.npy")
         np.save(save_path, arr_chw)
         calib_paths.append(save_path)
-
-    print(f"  변환 완료: {len(calib_paths)}개, shape: {arr_chw.shape}")
-
+    print(f"  변환 완료: {len(calib_paths)}개")
 else:
-    # 기존 데이터 없으면 ImageNet 정규화된 랜덤 데이터로 생성
-    print(f"기존 캘리브레이션 데이터 없음 — 랜덤 데이터 생성 (정확도 낮을 수 있음)")
+    # 둘 다 없으면 랜덤 생성 (정확도 낮음)
+    print(f"캘리브레이션 데이터 없음 — 랜덤 데이터 생성 (정확도 낮을 수 있음)")
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32).reshape(3, 1, 1)
     std  = np.array([0.229, 0.224, 0.225], dtype=np.float32).reshape(3, 1, 1)
+    calib_paths = []
     for i in range(100):
         arr = (np.random.randn(3, 224, 224).astype(np.float32) * std) + mean
         save_path = os.path.join(CALIB_SAVE_DIR, f"{i:04d}.npy")
