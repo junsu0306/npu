@@ -35,8 +35,8 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))          # .../npu/compi
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
 
 MODELS = [
-    ("efficientvit_b0.r224_in1k", os.path.join(ASSETS_DIR, "onnx", "efficientvit_b0_r224_nchw.onnx")),
-    ("efficientvit_b1.r224_in1k", os.path.join(ASSETS_DIR, "onnx", "efficientvit_b1_r224_nchw.onnx")),
+    ("efficientvit_b0.r224_in1k", os.path.join(ASSETS_DIR, "onnx", "efficientvit_b0_r224_timm_nchw.onnx")),
+    ("efficientvit_b1.r224_in1k", os.path.join(ASSETS_DIR, "onnx", "efficientvit_b1_r224_timm_nchw.onnx")),
 ]
 CALIB_SAVE_DIR = os.path.join(ASSETS_DIR, "calib_nchw")
 CALIB_TXT      = os.path.join(BASE_DIR, "calib_nchw.txt")
@@ -65,6 +65,12 @@ for model_name, onnx_path in MODELS:
             output_names=["output"],
             do_constant_folding=True,
         )
+
+    # shape inference: 그래프 구조 변경 없이 중간 텐서 shape 메타데이터만 추가.
+    # 컴파일러가 shape를 실행 시마다 재계산하는 overhead를 없앤다.
+    onnx_model = onnx.load(onnx_path)
+    onnx_model = onnx.shape_inference.infer_shapes(onnx_model)
+    onnx.save(onnx_model, onnx_path)
 
     # 저장된 ONNX 검증
     onnx_model = onnx.load(onnx_path)

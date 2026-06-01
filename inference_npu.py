@@ -12,9 +12,9 @@ compile_nchw.py로 생성한 .mxq 파일 사용.
   cd /home/airlab_compression
   source aries_env/bin/activate
   cd npu/
-  python3 inference_npu.py --model assets/mxq/efficientvit_b0_r224_nchw.mxq --image val_example.JPEG --labels imagenet_classes.txt
-  python3 inference_npu.py --model assets/mxq/efficientvit_b0_r224_nchw.mxq --benchmark
-  python3 inference_npu.py --model assets/mxq/efficientvit_b0_r224_nchw.mxq --val_dir /data/imagenet/val
+  python3 inference_npu.py --model assets/mxq/efficientvit_b0_r224_timm_nchw.mxq --image val_example.JPEG --labels imagenet_classes.txt
+  python3 inference_npu.py --model assets/mxq/efficientvit_b0_r224_timm_nchw.mxq --benchmark
+  python3 inference_npu.py --model assets/mxq/efficientvit_b0_r224_timm_nchw.mxq --val_dir /data/imagenet/val
 """
 import argparse
 import time
@@ -143,7 +143,10 @@ def run_accuracy(model: EfficientViTNPU, val_dir: str, labels: list,
             continue
         gt = class_to_idx[cls_name]
 
-        for img_path in glob.glob(os.path.join(cls_dir, "*.JPEG")):
+        img_paths = (glob.glob(os.path.join(cls_dir, "*.JPEG")) +
+                     glob.glob(os.path.join(cls_dir, "*.jpeg")) +
+                     glob.glob(os.path.join(cls_dir, "*.jpg")))
+        for img_path in img_paths:
             if max_images and total >= max_images:
                 break
             try:
