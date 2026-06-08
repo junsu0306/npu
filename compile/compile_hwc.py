@@ -27,7 +27,7 @@ Then inside container:
 
 import glob
 import os
-from qbcompiler import mxq_compile
+from qubee import mxq_compile
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))          # .../npu/compile
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
