@@ -84,7 +84,8 @@ for model_name, mxq_path in MODELS:
         backend="torch",
         feed_dict=feed_dict,
         quantization_method=1,   # 0: per-tensor, 1: per-channel
-        quantization_mode=1,     # 1: percentile
+        quantization_mode=2,     # 2: histogram
+        hist_search_type=2,      # 2: KL-Divergence
         percentile=0.999,
         quantization_output=0,   # output layer: per-tensor
     )
