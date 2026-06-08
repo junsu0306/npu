@@ -3,17 +3,15 @@
 EfficientViT-B0/B1 최대한 많은 레이어를 FP16으로 컴파일.
 
 EfficientViT INT8 양자화가 attention 연산에서 실패하므로
-BitConfig로 모든 attention bit widths를 16bit로 설정하고
-activation_16bits / weight_16bits 에 전체 레이어명을 넣어 최대한 FP16으로 유지.
+BitConfig로 모든 transformer bit widths를 16bit로 설정하고
+layer_overrides.activation_16bits / weight_16bits 에 전체 레이어명을 넣어
+최대한 FP16으로 유지.
 
-PDF 근거:
-  - QuantizationConfig(calibration=CalibrationConfig, bit=BitConfig)
-  - mxq_compile(..., quantization_config=QuantizationConfig)
-  - BitConfig.activation_16bits: List[str] — 해당 레이어 activation을 16bit로 강제
-
+사전 준비: qbcompiler v1.1.0 wheel 설치 (v0.9.0.2에는 BitConfig API 없음)
 Inside Docker:
+  pip install /workspace/npu/assets/qbcompiler-1.1.0+aries2-py3-none-any.whl
   pip install timm
-  python3 /home/airlab_compression/npu/compile/compile_fp16.py
+  python3 /workspace/npu/compile/compile_fp16.py
 """
 
 import glob
@@ -22,11 +20,7 @@ import sys
 import torch
 import timm
 from qbcompiler import mxq_compile
-from qbcompiler.configs.quantization_config import (
-    get_calibration_config,
-    get_bit_config,
-    get_quantization_config,
-)
+from qbcompiler.configs import BitConfig, CalibrationConfig, CompileConfig
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
@@ -48,36 +42,30 @@ os.makedirs(MXQ_DIR, exist_ok=True)
 feed_dict = {"x": torch.randn(1, 3, 224, 224).cpu()}
 
 
-def make_quant_config(model):
-    """모델 전체 레이어명을 activation_16bits / weight_16bits 에 등록."""
+def make_compile_config(model) -> CompileConfig:
+    """모든 transformer bit widths를 16bit로, layer_overrides로 전체 레이어 16bit 강제."""
     layer_names = [name for name, _ in model.named_modules() if name]
-    print(f"  FP16 대상 레이어 수: {len(layer_names)}")
+    print(f"  FP16 강제 레이어 수: {len(layer_names)}")
 
-    calib_cfg = get_calibration_config(
-        quantization_method=0,   # WChALayer
-        quantization_mode=0,     # max
-        quantization_output=0,   # Layer
+    bit_cfg = BitConfig(
+        transformer=BitConfig.Transformer(
+            activation=BitConfig.Transformer.Activation(
+                query=16, key=16, value=16, output=16, ffn=16, head=16,
+            ),
+            weight=BitConfig.Transformer.Weight(
+                query=16, key=16, value=16, output=16, ffn=16, head=16,
+            ),
+            mixed_precision=BitConfig.Transformer.MixedPrecision(apply=True),
+        ),
+        layer_overrides=BitConfig.LayerOverrides(
+            activation_16bits=layer_names,
+            weight_16bits=layer_names,
+        ),
     )
 
-    bit_cfg = get_bit_config(
-        query_act_bits=16,
-        key_act_bits=16,
-        value_act_bits=16,
-        output_act_bits=16,
-        ffn_act_bits=16,
-        head_act_bits=16,
-        query_weight_bits=16,
-        key_weight_bits=16,
-        value_weight_bits=16,
-        output_weight_bits=16,
-        ffn_weight_bits=16,
-        head_weight_bits=16,
-        mixed_precision_apply=True,
-        activation_16bits=layer_names,
-        weight_16bits=layer_names,
-    )
+    calib_cfg = CalibrationConfig(method=0, mode=0, output=0)
 
-    return get_quantization_config(calibration=calib_cfg, bit=bit_cfg)
+    return CompileConfig(calibration=calib_cfg, bit=bit_cfg)
 
 
 def compile_model(model, mxq_path, label):
@@ -89,7 +77,7 @@ def compile_model(model, mxq_path, label):
     print(f"  output: {mxq_path}")
     print(f"{'='*60}")
 
-    quant_cfg = make_quant_config(model)
+    compile_cfg = make_compile_config(model)
 
     mxq_compile(
         model=model,
@@ -97,7 +85,7 @@ def compile_model(model, mxq_path, label):
         calib_data_path=CALIB_TXT,
         backend="torch",
         feed_dict=feed_dict,
-        quantization_config=quant_cfg,
+        compile_config=compile_cfg,
     )
     print(f"Saved: {mxq_path}")
 
