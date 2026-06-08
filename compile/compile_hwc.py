@@ -34,7 +34,7 @@ ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
 
 CALIB_HWC_DIR = os.path.join(ASSETS_DIR, "calib_hwc")
 
-hwc_files = sorted(glob.glob(os.path.join(CALIB_HWC_DIR, "*.npy")))[:200]
+hwc_files = sorted(glob.glob(os.path.join(CALIB_HWC_DIR, "*.npy")))
 if not hwc_files:
     raise FileNotFoundError(f"No HWC calibration .npy files found in {CALIB_HWC_DIR}")
 
