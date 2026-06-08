@@ -47,8 +47,8 @@
   • efficientvit_b0/b1_original_r224_nchw.onnx 2개 파일 생성
 
 [이 다음 단계는 네(이 repo) 책임 밖이다 — 참고만]
-  생성된 .onnx 2개를 NPU 프로젝트로 가져가서 Docker 안의 compile_nchw.py 가
-  qbcompiler 로 .mxq 컴파일한다. 거기서 쓰는 캘리브레이션 데이터는 CHW (3,224,224)
+  생성된 .onnx 2개를 NPU 프로젝트로 가져가서 Docker 안의 compile_hwc.py 가
+  qbcompiler 로 .mxq 컴파일한다. 거기서 쓰는 캘리브레이션 데이터는 HWC (224,224,3)
   float32 .npy 이며 ImageNet 정규화(mean/std)된 전처리를 쓴다. 이 스크립트는
   ONNX 만 만들면 되고 캘리브레이션 데이터는 만들지 않아도 된다.
 
@@ -158,4 +158,4 @@ for name, weight_path, onnx_path in MODELS:
 
     print(f"  저장 완료: {onnx_path}")
 
-print(f"\n완료! 생성된 ONNX 를 NPU 프로젝트의 assets/onnx/ 로 복사한 뒤 compile_nchw.py 실행.")
+print(f"\n완료! 생성된 ONNX 를 NPU 프로젝트의 assets/onnx/ 로 복사한 뒤 compile_hwc.py 실행.")

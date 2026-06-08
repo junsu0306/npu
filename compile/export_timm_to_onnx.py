@@ -38,8 +38,8 @@ MODELS = [
     ("efficientvit_b0.r224_in1k", os.path.join(ASSETS_DIR, "onnx", "efficientvit_b0_r224_timm_nchw.onnx")),
     ("efficientvit_b1.r224_in1k", os.path.join(ASSETS_DIR, "onnx", "efficientvit_b1_r224_timm_nchw.onnx")),
 ]
-CALIB_SAVE_DIR = os.path.join(ASSETS_DIR, "calib_nchw")
-CALIB_TXT      = os.path.join(BASE_DIR, "calib_nchw.txt")
+CALIB_SAVE_DIR = os.path.join(ASSETS_DIR, "calib_hwc")
+CALIB_TXT      = os.path.join(BASE_DIR, "calib_hwc.txt")
 
 # 기존 HWC 캘리브레이션 txt (없으면 랜덤 생성)
 EXISTING_CALIB_TXT = os.path.join(ASSETS_DIR, "imagenet_calib", "imagenet_nhwc.txt")
@@ -133,5 +133,5 @@ with open(CALIB_TXT, "w") as f:
 print(f"  txt 저장: {CALIB_TXT}")
 
 print(f"\n완료! 다음 단계:")
-print(f"  1. 생성된 .onnx 파일과 calib_nchw/ 를 Docker 컨테이너에 복사")
-print(f"  2. Docker 안에서 compile_nchw.py 실행")
+print(f"  1. 생성된 .onnx 파일과 calib_hwc/ 를 Docker 컨테이너에 복사")
+print(f"  2. Docker 안에서 compile_hwc.py 실행")

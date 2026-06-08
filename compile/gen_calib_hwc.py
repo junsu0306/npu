@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Generate CHW calibration data from raw ImageNet JPEG files.
+Generate HWC calibration data from raw ImageNet JPEG files.
+
+qbcompiler 기본값이 HWC 입력이므로 캘리브레이션 텐서도 HWC (224, 224, 3) 로 저장.
 
 Run this OUTSIDE Docker (needs cv2, numpy) before compiling:
   cd /home/airlab_compression/npu
   source aries_env/bin/activate
-  python3 compile/gen_calib_nchw.py
+  python3 compile/gen_calib_hwc.py
 """
 
 import glob
@@ -17,7 +19,7 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
 
 SRC_DIR  = os.path.join(ASSETS_DIR, "imagenet_calib")
-DST_DIR  = os.path.join(ASSETS_DIR, "calib_nchw")
+DST_DIR  = os.path.join(ASSETS_DIR, "calib_hwc")
 N_IMAGES = 500
 
 MEAN = np.float32([0.485, 0.456, 0.406])
@@ -49,8 +51,7 @@ for jpg_path in jpg_files:
               (w - 224) // 2:(w - 224) // 2 + 224]
 
     img = img.astype(np.float32) / 255.0
-    img = (img - MEAN) / STD           # (224, 224, 3) normalized
-    img = img.transpose(2, 0, 1)       # (3, 224, 224) CHW
+    img = (img - MEAN) / STD           # (224, 224, 3) HWC normalized
 
     np.save(os.path.join(DST_DIR, f"{saved:04d}.npy"), img)
     saved += 1
