@@ -32,7 +32,7 @@ STD  = np.float32([0.229, 0.224, 0.225])
 
 
 def preprocess(image_path: str) -> np.ndarray:
-    """이미지 → CHW float32 배열 (3,224,224) — MXQ 모델 네이티브 입력 포맷"""
+    """이미지 → HWC float32 배열 (224,224,3) — MXQ 모델 네이티브 입력 포맷"""
     img = cv2.imread(image_path, cv2.IMREAD_COLOR)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
@@ -48,8 +48,7 @@ def preprocess(image_path: str) -> np.ndarray:
     img = img[top:top+224, left:left+224]
 
     img = img.astype(np.float32) / 255.0
-    img = (img - MEAN) / STD
-    img = img.transpose(2, 0, 1)          # (3, 224, 224) CHW
+    img = (img - MEAN) / STD              # (224, 224, 3) HWC
     return img
 
 
@@ -67,7 +66,7 @@ class EfficientViTNPU:
         print(f"[NPU] 로드 완료: {mxq_path}")
 
     def infer(self, img: np.ndarray) -> np.ndarray:
-        """img: CHW (3,224,224) float32 → logits (1000,)"""
+        """img: HWC (224,224,3) float32 → logits (1000,)"""
         result = self.model.infer([img])
         return result[0].flatten()
 
@@ -107,7 +106,7 @@ def run_single(model: EfficientViTNPU, image_path: str, labels: list, top_k: int
 
 
 def run_benchmark(model: EfficientViTNPU, n_iter: int = 200):
-    dummy = np.random.randn(3, 224, 224).astype(np.float32)
+    dummy = np.random.randn(224, 224, 3).astype(np.float32)
 
     # 워밍업
     for _ in range(10):

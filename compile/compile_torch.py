@@ -87,26 +87,23 @@ for model_name, mxq_path in TIMM_MODELS:
 
 
 # ── 2. 원본(mit-han-lab) .pt 모델 ────────────────────────────────────────────
-try:
-    from efficientvit.cls_model_zoo import create_cls_model
+import sys
+sys.path.insert(0, "/workspace/efficientvit2026")  # 패키지 경로
 
-    ORIGINAL_MODELS = [
-        ("b0", os.path.join(PT_DIR, "efficientvit_b0_original.pt"),
-               os.path.join(MXQ_DIR, "efficientvit_b0_original.mxq")),
-        ("b1", os.path.join(PT_DIR, "efficientvit_b1_original.pt"),
-               os.path.join(MXQ_DIR, "efficientvit_b1_original.mxq")),
-    ]
+ORIGINAL_MODELS = [
+    (os.path.join(PT_DIR, "efficientvit_b0_original.pt"),
+     os.path.join(MXQ_DIR, "efficientvit_b0_original.mxq")),
+    (os.path.join(PT_DIR, "efficientvit_b1_original.pt"),
+     os.path.join(MXQ_DIR, "efficientvit_b1_original.mxq")),
+]
 
-    for name, pt_path, mxq_path in ORIGINAL_MODELS:
-        if not os.path.exists(pt_path):
-            print(f"\n[SKIP] .pt 없음: {pt_path}")
-            continue
-        model = create_cls_model(name=name, pretrained=True, weight_url=pt_path)
-        model.eval().cpu()
-        compile_model(model, mxq_path, f"efficientvit-{name} (original)")
-
-except ImportError:
-    print("\n[SKIP] efficientvit 패키지 없음 — 원본 모델 컴파일 건너뜀")
+for pt_path, mxq_path in ORIGINAL_MODELS:
+    if not os.path.exists(pt_path):
+        print(f"\n[SKIP] .pt 없음: {pt_path}")
+        continue
+    model = torch.load(pt_path, map_location="cpu", weights_only=False)
+    model.eval().cpu()
+    compile_model(model, mxq_path, os.path.basename(pt_path))
 
 
 print("\nAll done.")
