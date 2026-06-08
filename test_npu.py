@@ -21,7 +21,7 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 CALIB_DIR  = os.path.join(BASE_DIR, "assets", "calibration_data")
 
 
-def preprocess(image_path: str) -> np.ndarray:
+def preprocess(image_path: str, chw: bool = False) -> np.ndarray:
     img = cv2.imread(image_path, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError(f"Cannot read: {image_path}")
@@ -33,6 +33,8 @@ def preprocess(image_path: str) -> np.ndarray:
     img = img[(h-224)//2:(h-224)//2+224, (w-224)//2:(w-224)//2+224]
     img = img.astype(np.float32) / 255.0
     img = (img - MEAN) / STD              # HWC (224,224,3)
+    if chw:
+        img = img.transpose(2, 0, 1)      # CHW (3,224,224)
     return img
 
 
@@ -48,6 +50,7 @@ def main():
     parser.add_argument("--model",   required=True)
     parser.add_argument("--labels",  default=None)
     parser.add_argument("--n",       type=int, default=10, help="테스트할 이미지 수")
+    parser.add_argument("--chw",     action="store_true", help="입력을 CHW (3,224,224)로 변환 (torch 백엔드 모델용)")
     args = parser.parse_args()
 
     labels = load_labels(args.labels)
@@ -68,8 +71,11 @@ def main():
     model = qbruntime.Model(args.model, config)
     model.launch(acc)
 
+    fmt = "CHW" if args.chw else "HWC"
+    print(f"입력 포맷: {fmt}\n")
+
     for img_path in test_imgs:
-        img = preprocess(img_path)
+        img = preprocess(img_path, chw=args.chw)
         logits = model.infer([img])[0].flatten()
         probs  = np.exp(logits - logits.max())
         probs /= probs.sum()
