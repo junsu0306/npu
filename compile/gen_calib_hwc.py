@@ -18,16 +18,16 @@ import numpy as np
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
 
-SRC_DIR  = os.path.join(ASSETS_DIR, "imagenet_calib")
+SRC_DIR  = os.path.join(ASSETS_DIR, "calibration_data")
 DST_DIR  = os.path.join(ASSETS_DIR, "calib_hwc")
-N_IMAGES = 500
+N_IMAGES = 1000
 
 MEAN = np.float32([0.485, 0.456, 0.406])
 STD  = np.float32([0.229, 0.224, 0.225])
 
 os.makedirs(DST_DIR, exist_ok=True)
 
-jpg_files = sorted(f for f in glob.glob(os.path.join(SRC_DIR, "*.jpg"))
+jpg_files = sorted(f for f in glob.glob(os.path.join(SRC_DIR, "**", "*.jpg"), recursive=True)
                    if not f.endswith(".Zone.Identifier"))
 if not jpg_files:
     raise FileNotFoundError(f"No .jpg files found in {SRC_DIR}")

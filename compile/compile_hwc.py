@@ -90,7 +90,7 @@ for onnx_path, mxq_path in MODELS:
         # 캘리브레이션과 추론 모두 HWC (224,224,3) 입력을 사용.
         quantization_method=1,   # 0: per-tensor, 1: per-channel
         quantization_mode=1,     # 1: percentile
-        percentile=0.99999,
+        percentile=0.999,
         quantization_output=0,   # output layer: per-tensor
     )
 
