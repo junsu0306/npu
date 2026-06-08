@@ -88,9 +88,10 @@ for onnx_path, mxq_path in MODELS:
         backend="onnx",
         # in_dformats 미지정: 컴파일러 기본값(HWC)으로 동작.
         # 캘리브레이션과 추론 모두 HWC (224,224,3) 입력을 사용.
-        quantize_method="Percentile",
-        quantize_percentile=0.99999,
-        is_quant_ch=False,
+        quantization_method=0,   # 0: per-tensor, 1: per-channel
+        quantization_mode=1,     # 1: percentile
+        percentile=0.99999,
+        quantization_output=0,   # output layer: per-tensor
     )
 
     print(f"Saved: {mxq_path}")

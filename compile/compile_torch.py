@@ -83,9 +83,10 @@ for model_name, mxq_path in MODELS:
         save_path=mxq_path,
         backend="torch",
         feed_dict=feed_dict,
-        quantize_method="Percentile",
-        quantize_percentile=0.99999,
-        is_quant_ch=False,
+        quantization_method=0,   # 0: per-tensor, 1: per-channel
+        quantization_mode=1,     # 1: percentile
+        percentile=0.9999,
+        quantization_output=0,   # output layer: per-tensor
     )
 
     print(f"Saved: {mxq_path}")
