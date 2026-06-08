@@ -2,3 +2,4 @@
 assets/onnx/*.onnx
 !assets/onnx/efficientvit_b0_original_r224_nchw.onnx
 !assets/onnx/efficientvit_b1_original_r224_nchw.onnx
+aries_env/*
