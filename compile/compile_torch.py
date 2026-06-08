@@ -45,50 +45,68 @@ with open(CALIB_TXT, "w") as f:
     f.write("\n".join(hwc_files) + "\n")
 print(f"Calibration list: {len(hwc_files)} HWC files -> {CALIB_TXT}")
 
-MXQ_DIR = os.path.join(ASSETS_DIR, "mxq")
+MXQ_DIR  = os.path.join(ASSETS_DIR, "mxq")
+PT_DIR   = os.path.join(ASSETS_DIR, "torch")
 os.makedirs(MXQ_DIR, exist_ok=True)
 
-# timm 모델명 → MXQ 저장 경로
-MODELS = [
-    (
-        "efficientvit_b0.r224_in1k",
-        os.path.join(MXQ_DIR, "efficientvit_b0_r224_timm.mxq"),
-    ),
-    (
-        "efficientvit_b1.r224_in1k",
-        os.path.join(MXQ_DIR, "efficientvit_b1_r224_timm.mxq"),
-    ),
-]
-
-# timm EfficientViT forward 시그니처: forward(self, x) → feed_dict key = "x"
 feed_dict = {"x": torch.randn(1, 3, 224, 224).cpu()}
 
-for model_name, mxq_path in MODELS:
+COMPILE_ARGS = dict(
+    calib_data_path=CALIB_TXT,
+    backend="torch",
+    feed_dict=feed_dict,
+    quantization_method=0,   # WChALayer: per-channel weight, per-layer activation
+    quantization_mode=2,     # histogram
+    hist_search_type=2,      # kl-divergence
+    quantization_output=0,   # Layer: per-layer output quantization
+)
+
+
+def compile_model(model, mxq_path, label):
     if os.path.exists(mxq_path):
         print(f"\n[SKIP] 이미 존재: {mxq_path} (재컴파일하려면 파일 삭제)")
-        continue
-
+        return
     print(f"\n{'='*60}")
-    print(f"Compiling (torch backend): {model_name}")
-    print(f"  calib : {CALIB_TXT}")
+    print(f"Compiling: {label}")
     print(f"  output: {mxq_path}")
     print(f"{'='*60}")
+    mxq_compile(model=model, save_path=mxq_path, **COMPILE_ARGS)
+    print(f"Saved: {mxq_path}")
 
+
+# ── 1. timm pretrained 모델 ───────────────────────────────────────────────────
+TIMM_MODELS = [
+    ("efficientvit_b0.r224_in1k", os.path.join(MXQ_DIR, "efficientvit_b0_r224_timm.mxq")),
+    ("efficientvit_b1.r224_in1k", os.path.join(MXQ_DIR, "efficientvit_b1_r224_timm.mxq")),
+]
+
+for model_name, mxq_path in TIMM_MODELS:
     model = timm.create_model(model_name, pretrained=True)
     model.eval().cpu()
+    compile_model(model, mxq_path, model_name)
 
-    mxq_compile(
-        model=model,
-        calib_data_path=CALIB_TXT,
-        save_path=mxq_path,
-        backend="torch",
-        feed_dict=feed_dict,
-        quantization_method=0,   # WChALayer: per-channel weight, per-layer activation
-        quantization_mode=2,     # histogram
-        hist_search_type=2,      # kl-divergence
-        quantization_output=0,   # Layer: per-layer output quantization
-    )
 
-    print(f"Saved: {mxq_path}")
+# ── 2. 원본(mit-han-lab) .pt 모델 ────────────────────────────────────────────
+try:
+    from efficientvit.cls_model_zoo import create_cls_model
+
+    ORIGINAL_MODELS = [
+        ("b0", os.path.join(PT_DIR, "efficientvit_b0_original.pt"),
+               os.path.join(MXQ_DIR, "efficientvit_b0_original.mxq")),
+        ("b1", os.path.join(PT_DIR, "efficientvit_b1_original.pt"),
+               os.path.join(MXQ_DIR, "efficientvit_b1_original.mxq")),
+    ]
+
+    for name, pt_path, mxq_path in ORIGINAL_MODELS:
+        if not os.path.exists(pt_path):
+            print(f"\n[SKIP] .pt 없음: {pt_path}")
+            continue
+        model = create_cls_model(name=name, pretrained=True, weight_url=pt_path)
+        model.eval().cpu()
+        compile_model(model, mxq_path, f"efficientvit-{name} (original)")
+
+except ImportError:
+    print("\n[SKIP] efficientvit 패키지 없음 — 원본 모델 컴파일 건너뜀")
+
 
 print("\nAll done.")
