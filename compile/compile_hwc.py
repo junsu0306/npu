@@ -88,10 +88,10 @@ for onnx_path, mxq_path in MODELS:
         backend="onnx",
         # in_dformats 미지정: 컴파일러 기본값(HWC)으로 동작.
         # 캘리브레이션과 추론 모두 HWC (224,224,3) 입력을 사용.
-        quantization_method="WChALayer",    # per-channel weight, per-layer activation
-        quantization_mode="histogram",      # histogram-based calibration
-        hist_search_type="kl",              # KL-divergence search
-        quantization_output="Layer",        # per-layer output quantization
+        quantization_method=0,   # WChALayer: per-channel weight, per-layer activation
+        quantization_mode=2,     # histogram
+        hist_search_type=2,      # kl-divergence
+        quantization_output=0,   # Layer: per-layer output quantization
     )
 
     print(f"Saved: {mxq_path}")

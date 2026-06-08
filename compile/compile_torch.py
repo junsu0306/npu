@@ -83,10 +83,10 @@ for model_name, mxq_path in MODELS:
         save_path=mxq_path,
         backend="torch",
         feed_dict=feed_dict,
-        quantization_method="WChALayer",    # per-channel weight, per-layer activation
-        quantization_mode="histogram",      # histogram-based calibration
-        hist_search_type="kl",              # KL-divergence search
-        quantization_output="Layer",        # per-layer output quantization
+        quantization_method=0,   # WChALayer: per-channel weight, per-layer activation
+        quantization_mode=2,     # histogram
+        hist_search_type=2,      # kl-divergence
+        quantization_output=0,   # Layer: per-layer output quantization
     )
 
     print(f"Saved: {mxq_path}")
