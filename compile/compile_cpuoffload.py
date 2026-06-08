@@ -33,7 +33,6 @@ if not hwc_files:
         f"먼저 실행: python3 compile/gen_calib_hwc.py"
     )
 
-hwc_files = hwc_files[:200]
 CALIB_TXT = os.path.join(BASE_DIR, "calib_hwc.txt")
 with open(CALIB_TXT, "w") as f:
     f.write("\n".join(hwc_files) + "\n")
