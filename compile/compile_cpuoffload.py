@@ -5,12 +5,9 @@ EfficientViT-B0/B1 cpu_offload=True 컴파일 스크립트.
 EfficientViT의 attention 연산이 INT8 양자화와 충돌하여
 cpu_offload=True 로 CPU에서 처리하도록 설정.
 
-cpu_offload=True 시 주의사항 (PDF p.61):
-  - calibration 데이터: CHW (3, 224, 224)  ← calib_chw/ 사용
-  - runtime 입력:       CHW (3, 224, 224)  ← test_npu.py --chw 사용
-
-사전 준비 (Docker 밖):
-  python3 compile/gen_calib_chw.py
+cpu_offload=True 시 주의사항:
+  - calibration 데이터: HWC (224, 224, 3)  ← calib_hwc/ 사용 (항상 동일)
+  - runtime 입력:       HWC (224, 224, 3)  ← test_npu.py (--chw 없이)
 
 Inside Docker:
   pip install timm
@@ -27,20 +24,20 @@ from qbcompiler import mxq_compile
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
 
-# CHW calibration 데이터 (cpu_offload=True 전용)
-CALIB_CHW_DIR = os.path.join(ASSETS_DIR, "calib_chw")
-chw_files = sorted(glob.glob(os.path.join(CALIB_CHW_DIR, "*.npy")))
-if not chw_files:
+# HWC calibration 데이터 (cpu_offload 여부와 무관하게 항상 HWC)
+CALIB_HWC_DIR = os.path.join(ASSETS_DIR, "calib_hwc")
+hwc_files = sorted(glob.glob(os.path.join(CALIB_HWC_DIR, "*.npy")))
+if not hwc_files:
     raise FileNotFoundError(
-        f"No CHW calibration .npy files found in {CALIB_CHW_DIR}\n"
-        f"먼저 실행: python3 compile/gen_calib_chw.py"
+        f"No HWC calibration .npy files found in {CALIB_HWC_DIR}\n"
+        f"먼저 실행: python3 compile/gen_calib_hwc.py"
     )
 
-chw_files = chw_files[:200]
-CALIB_TXT = os.path.join(BASE_DIR, "calib_chw.txt")
+hwc_files = hwc_files[:200]
+CALIB_TXT = os.path.join(BASE_DIR, "calib_hwc.txt")
 with open(CALIB_TXT, "w") as f:
-    f.write("\n".join(chw_files) + "\n")
-print(f"Calibration list: {len(chw_files)} CHW files -> {CALIB_TXT}")
+    f.write("\n".join(hwc_files) + "\n")
+print(f"Calibration list: {len(hwc_files)} HWC files -> {CALIB_TXT}")
 
 MXQ_DIR = os.path.join(ASSETS_DIR, "mxq")
 PT_DIR  = os.path.join(ASSETS_DIR, "torch")
@@ -103,6 +100,6 @@ for pt_path, mxq_path in ORIGINAL_MODELS:
 
 
 print("""
-All done. NPU에서 테스트 (--chw 필수):
-  python3 test_npu.py --model assets/mxq/efficientvit_b0_r224_timm_cpuoffload.mxq --labels imagenet_classes.txt --n 10 --chw
+All done. NPU에서 테스트:
+  python3 test_npu.py --model assets/mxq/efficientvit_b0_r224_timm_cpuoffload.mxq --labels imagenet_classes.txt --n 10
 """)
