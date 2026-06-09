@@ -1,5 +1,5 @@
 # ONNX 파일은 로컬에서만 작업 (용량 큼)
-assets/onnx/*.onnx
+#assets/onnx/*.onnx
 !assets/onnx/efficientvit_b0_original_r224_nchw.onnx
 !assets/onnx/efficientvit_b1_original_r224_nchw.onnx
 aries_env/*

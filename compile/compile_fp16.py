@@ -42,10 +42,22 @@ os.makedirs(MXQ_DIR, exist_ok=True)
 feed_dict = {"x": torch.randn(1, 3, 224, 224).cpu()}
 
 
-def make_compile_config(model) -> CompileConfig:
-    """모든 transformer bit widths를 16bit로, layer_overrides로 전체 레이어 16bit 강제."""
-    layer_names = [name for name, _ in model.named_modules() if name]
-    print(f"  FP16 강제 레이어 수: {len(layer_names)}")
+def make_compile_config() -> CompileConfig:
+    """컴파일러 내부 블록명으로 activation을 16bit 강제.
+
+    블록명은 이전 compile_fp16.py 실행 시 mixed precision 출력에서 확인:
+      Model Statistics: 11 blocks (Attn=0, Conv=7, Undef=4)
+    PyTorch 레이어명이 아닌 컴파일러가 부여한 이름이어야 적용됨.
+    """
+    block_names = [
+        # Conv 블록
+        "ConvBlock_1", "ConvBlock_3",  "ConvBlock_5",
+        "ConvBlock_7", "ConvBlock_8",  "ConvBlock_10", "ConvBlock_11",
+        # Undefined 블록 (EfficientViT attention)
+        "UndefinedBlock_1", "UndefinedBlock_2",
+        "UndefinedBlock_3", "UndefinedBlock_4",
+    ]
+    print(f"  activation_16bits 블록 수: {len(block_names)}")
 
     bit_cfg = BitConfig(
         transformer=BitConfig.Transformer(
@@ -58,8 +70,8 @@ def make_compile_config(model) -> CompileConfig:
             mixed_precision=BitConfig.Transformer.MixedPrecision(apply=True),
         ),
         layer_overrides=BitConfig.LayerOverrides(
-            activation_16bits=layer_names,
-            weight_16bits=layer_names,
+            activation_16bits=block_names,
+            weight_16bits=block_names,
         ),
     )
 
@@ -77,7 +89,7 @@ def compile_model(model, mxq_path, label):
     print(f"  output: {mxq_path}")
     print(f"{'='*60}")
 
-    compile_cfg = make_compile_config(model)
+    compile_cfg = make_compile_config()
 
     mxq_compile(
         model=model,
