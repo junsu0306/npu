@@ -8,6 +8,7 @@ I'm trying to deploy **EfficientViT-B0/B1** (MIT-Han Lab) on a Mobilint MLA100 N
 
 - All quantization method/mode combinations (`WChALayer`, `WChAMulti`, `max`, `histogram`, `kl-divergence`) with both `backend="onnx"` and `backend="torch"` — all wrong.
 - `cpu_offload=True` — predictions still wrong.
+- The **original MIT-Han-Lab checkpoint** (which includes `HardSigmoid` ops, unlike the timm version) crashes during compilation every time with `RuntimeError: Error. quantize failed. basic_string::_M_create` inside `_quantization_task`. This happens regardless of `cpu_offload`, `activation_16bits`, or calibration format. The timm pretrained version compiles without error but gives wrong predictions.
 - `BitConfig` with all transformer bits set to 16 + `mixed_precision_apply=True` — compiler output showed `Attn=0`, so EfficientViT's attention wasn't recognized as an Attention block. Everything stayed at 8-bit.
 - To rule out a qbcompiler-specific issue, I ran ONNX Runtime INT8 quantization on the same model. Every method (per-tensor, per-channel, MinMax, Entropy, Percentile) gave 0/10. UINT16 activations improved to 3/10. ONNX Runtime also logged warnings about `elem_type: 7` (INT64) tensors inside `context_module` — the ReLU-based linear attention has `Gather`/`Slice`/`Div` ops that produce INT64 tensors, and these seem to break INT8 quantization.
 - Sanity check: ResNet50 through the same pipeline → 99% accuracy. So the pipeline itself is fine.
