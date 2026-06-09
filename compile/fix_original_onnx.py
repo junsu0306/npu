@@ -13,6 +13,12 @@ original EfficientViT ONNX의 qbcompiler 비호환 노드 수정.
      - context_module 끝 Reshape → Cast(float32) → Conv 구간에서
        Cast를 우회해 Reshape 출력을 Conv에 직접 연결
 
+  3. INT64 Constant 노드 → initializer 변환
+     - Reshape shape / Slice starts·ends·axes 등이 Constant(INT64) 노드로 존재
+     - qbcompiler quantizer가 Constant 출력을 float 텐서로 오해 →
+       range=0 → scale=0 → zeropoint=-2147483648 오버플로우 발생
+     - initializer로 올리면 qbcompiler dtype 체크 후 양자화 건너뜀
+
 사용:
   python3 compile/fix_original_onnx.py
 
