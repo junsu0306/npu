@@ -50,7 +50,10 @@ def extract_ctx_layer_names(onnx_path: str) -> list:
 
 
 def make_compile_config(layer_names: list) -> CompileConfig:
-    print(f"  activation_16bits: {len(layer_names)} context_module 노드")
+    # layer_names 가 비어있으면 layer_overrides 자체를 넘기지 않음 (크래시 회피 테스트용)
+    use_overrides = len(layer_names) > 0
+    print(f"  activation_16bits: {len(layer_names)} 노드 {'(적용)' if use_overrides else '(비활성 — 기본 INT8)'}")
+
     bit_cfg = BitConfig(
         transformer=BitConfig.Transformer(
             activation=BitConfig.Transformer.Activation(
@@ -61,16 +64,16 @@ def make_compile_config(layer_names: list) -> CompileConfig:
             ),
             mixed_precision=BitConfig.Transformer.MixedPrecision(apply=True),
         ),
-        layer_overrides=BitConfig.LayerOverrides(
+        **({"layer_overrides": BitConfig.LayerOverrides(
             activation_16bits=layer_names,
             weight_16bits=layer_names,
-        ),
+        )} if use_overrides else {}),
     )
     calib_cfg = CalibrationConfig(method=0, mode=0, output=0)
     return CompileConfig(calibration=calib_cfg, bit=bit_cfg)
 
 
-def compile_model(onnx_path: str, mxq_path: str):
+def compile_model(onnx_path: str, mxq_path: str, fp16: bool = True):
     if os.path.exists(mxq_path):
         print(f"\n[SKIP] 이미 존재: {mxq_path}")
         return
@@ -83,7 +86,7 @@ def compile_model(onnx_path: str, mxq_path: str):
     print(f"  output:  {mxq_path}")
     print(f"{'='*60}")
 
-    layer_names = extract_ctx_layer_names(onnx_path)
+    layer_names = extract_ctx_layer_names(onnx_path) if fp16 else []
     compile_cfg = make_compile_config(layer_names)
 
     mxq_compile(
@@ -91,10 +94,15 @@ def compile_model(onnx_path: str, mxq_path: str):
         save_path=mxq_path,
         calib_data_path=CALIB_TXT,
         backend="onnx",
+        cpu_offload=True,
         compile_config=compile_cfg,
     )
     print(f"Saved: {mxq_path}")
 
+
+# fp16=False 로 먼저 실행해 activation_16bits 없이 기본 INT8 컴파일이 되는지 확인.
+# 성공하면 fp16=True 로 변경해서 activation_16bits 크래시 여부 재검증.
+FP16 = False   # ← True/False 로 전환하며 테스트
 
 MODELS = [
     ("efficientvit_b0_original_r224_nchw.onnx", "efficientvit_b0_original_fp16.mxq"),
@@ -105,6 +113,7 @@ for onnx_name, mxq_name in MODELS:
     compile_model(
         onnx_path=os.path.join(ONNX_DIR, onnx_name),
         mxq_path=os.path.join(MXQ_DIR, mxq_name),
+        fp16=FP16,
     )
 
 print("""
