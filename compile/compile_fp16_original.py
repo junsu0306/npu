@@ -13,6 +13,7 @@ context_module 노드명을 각 ONNX 파일에서 동적으로 추출해 activat
 
 import glob
 import os
+import numpy as np
 import onnx
 from qbcompiler import mxq_compile
 from qbcompiler.configs import BitConfig, CalibrationConfig, CompileConfig
@@ -20,15 +21,28 @@ from qbcompiler.configs import BitConfig, CalibrationConfig, CompileConfig
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
 
+# HWC calibration 파일 목록
 CALIB_HWC_DIR = os.path.join(ASSETS_DIR, "calib_hwc")
 hwc_files = sorted(glob.glob(os.path.join(CALIB_HWC_DIR, "*.npy")))
 if not hwc_files:
     raise FileNotFoundError(f"No HWC calibration .npy files in {CALIB_HWC_DIR}")
 
-CALIB_TXT = os.path.join(BASE_DIR, "calib_hwc.txt")
+# CHW calibration 파일 생성 (cpu_offload=True + backend="onnx" + NCHW 모델 조합에 필요)
+CALIB_CHW_DIR = os.path.join(ASSETS_DIR, "calib_chw")
+os.makedirs(CALIB_CHW_DIR, exist_ok=True)
+
+chw_files = []
+for hwc_path in hwc_files:
+    chw_path = os.path.join(CALIB_CHW_DIR, os.path.basename(hwc_path))
+    if not os.path.exists(chw_path):
+        arr = np.load(hwc_path)          # (224, 224, 3)
+        np.save(chw_path, arr.transpose(2, 0, 1))  # (3, 224, 224)
+    chw_files.append(chw_path)
+
+CALIB_TXT = os.path.join(BASE_DIR, "calib_chw.txt")
 with open(CALIB_TXT, "w") as f:
-    f.write("\n".join(hwc_files) + "\n")
-print(f"Calibration list: {len(hwc_files)} HWC files -> {CALIB_TXT}")
+    f.write("\n".join(chw_files) + "\n")
+print(f"Calibration list: {len(chw_files)} CHW files -> {CALIB_TXT}")
 
 MXQ_DIR  = os.path.join(ASSETS_DIR, "mxq")
 ONNX_DIR = os.path.join(ASSETS_DIR, "onnx")
@@ -92,7 +106,7 @@ def compile_model(onnx_path: str, mxq_path: str, fp16: bool = True):
     mxq_compile(
         model=onnx_path,
         save_path=mxq_path,
-        calib_data_path=CALIB_TXT,
+        calib_data_path=CALIB_TXT,   # CHW (3,224,224) — cpu_offload+onnx+NCHW 조합에 필요
         backend="onnx",
         cpu_offload=True,
         compile_config=compile_cfg,
@@ -102,7 +116,7 @@ def compile_model(onnx_path: str, mxq_path: str, fp16: bool = True):
 
 # fp16=False 로 먼저 실행해 activation_16bits 없이 기본 INT8 컴파일이 되는지 확인.
 # 성공하면 fp16=True 로 변경해서 activation_16bits 크래시 여부 재검증.
-FP16 = False   # ← True/False 로 전환하며 테스트
+FP16 = True   # ← True/False 로 전환하며 테스트
 
 MODELS = [
     ("efficientvit_b0_original_r224_nchw.onnx", "efficientvit_b0_original_fp16.mxq"),
