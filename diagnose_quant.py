@@ -120,7 +120,6 @@ def quantize_model():
         activation_type=QuantType.QInt8,
         per_channel=True,        # per-channel weight quantization
         reduce_range=False,
-        optimize_model=True,
     )
     print(f"INT8 모델 저장: {ONNX_INT8}")
 
