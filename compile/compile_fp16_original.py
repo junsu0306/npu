@@ -87,7 +87,14 @@ def make_compile_config(layer_names: list) -> CompileConfig:
     return CompileConfig(calibration=calib_cfg, bit=bit_cfg)
 
 
-def compile_model(onnx_path: str, mxq_path: str, fp16: bool = True):
+# ── 진단 모드 ─────────────────────────────────────────────────────────────────
+# 0 = 옵션 없는 최소 컴파일 (BitConfig 전혀 없음)
+# 1 = CalibrationConfig만 (BitConfig 없음)
+# 2 = BitConfig + MixedPrecision (FP16 없음, 현재 FP16=False 경로)
+# 3 = BitConfig + MixedPrecision + activation_16bits (FP16=True)
+DIAG_MODE = 0   # ← 여기서 0부터 시작해서 통과하면 번호 올리기
+
+def compile_model(onnx_path: str, mxq_path: str):
     if os.path.exists(mxq_path):
         print(f"\n[SKIP] 이미 존재: {mxq_path}")
         return
@@ -96,27 +103,32 @@ def compile_model(onnx_path: str, mxq_path: str, fp16: bool = True):
         return
 
     print(f"\n{'='*60}")
-    print(f"Compiling: {os.path.basename(onnx_path)}")
+    print(f"Compiling: {os.path.basename(onnx_path)}  [DIAG_MODE={DIAG_MODE}]")
     print(f"  output:  {mxq_path}")
     print(f"{'='*60}")
 
-    layer_names = extract_ctx_layer_names(onnx_path) if fp16 else []
-    compile_cfg = make_compile_config(layer_names)
-
-    mxq_compile(
+    kwargs = dict(
         model=onnx_path,
         save_path=mxq_path,
         calib_data_path=CALIB_TXT,
         backend="onnx",
-        # cpu_offload=True,  # 크래시 원인 격리 테스트 — 일단 제거
-        compile_config=compile_cfg,
     )
+
+    if DIAG_MODE == 0:
+        print("  → 옵션 없음 (순수 기본값)")
+        # compile_config 전혀 없음
+    elif DIAG_MODE == 1:
+        print("  → CalibrationConfig만")
+        kwargs["compile_config"] = CompileConfig(
+            calibration=CalibrationConfig(method=0, mode=0, output=0)
+        )
+    elif DIAG_MODE >= 2:
+        layer_names = extract_ctx_layer_names(onnx_path) if (DIAG_MODE == 3) else []
+        kwargs["compile_config"] = make_compile_config(layer_names)
+
+    mxq_compile(**kwargs)
     print(f"Saved: {mxq_path}")
 
-
-# fp16=False 로 먼저 실행해 activation_16bits 없이 기본 INT8 컴파일이 되는지 확인.
-# 성공하면 fp16=True 로 변경해서 activation_16bits 크래시 여부 재검증.
-FP16 = False   # ← True/False 로 전환하며 테스트
 
 MODELS = [
     # _fixed: ReduceSum → MatMul 교체 + no-op Cast 제거 버전
@@ -129,7 +141,6 @@ for onnx_name, mxq_name in MODELS:
     compile_model(
         onnx_path=os.path.join(ONNX_DIR, onnx_name),
         mxq_path=os.path.join(MXQ_DIR, mxq_name),
-        fp16=FP16,
     )
 
 print("""
