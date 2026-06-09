@@ -10,7 +10,7 @@ assets/calib_chw_mh/
 assets/compile_efficientvit_chw.py
 assets/compile_efficientvit_cpuoffload_nchw.py
 assets/make_chw.py
-assets/mxq/
+#assets/mxq/
 assets/onnx/efficientvit_b0_original_r224_nchw_prep.onnx
 assets/onnx/efficientvit_b1_r224_timm_nchw_sim.onnx
 assets/onnx/quant_diag/
