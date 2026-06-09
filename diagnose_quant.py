@@ -23,13 +23,15 @@ from onnxruntime.quantization import (
     QuantType,
     QuantFormat,
 )
+try:
+    from onnxruntime.quantization import quant_pre_process
+except ImportError:
+    from onnxruntime.quantization.preprocess import quant_pre_process
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
-
-ONNX_FP32 = os.path.join(ASSETS_DIR, "onnx", "efficientvit_b0_r224_timm_nchw.onnx")
-OUT_DIR   = os.path.join(ASSETS_DIR, "onnx", "quant_diag")
-CALIB_DIR = os.path.join(ASSETS_DIR, "calibration_data")
+ONNX_DIR   = os.path.join(ASSETS_DIR, "onnx")
+CALIB_DIR  = os.path.join(ASSETS_DIR, "calibration_data")
 LABEL_FILE = os.path.join(BASE_DIR, "imagenet_classes.txt")
 
 N_CALIB = 200
@@ -38,7 +40,14 @@ N_TEST  = 10
 MEAN = np.float32([0.485, 0.456, 0.406])
 STD  = np.float32([0.229, 0.224, 0.225])
 
-os.makedirs(OUT_DIR, exist_ok=True)
+
+def find_models():
+    """assets/onnx/ 에서 _prep / quant_diag 제외한 모든 ONNX 반환."""
+    return sorted(
+        p for p in glob.glob(os.path.join(ONNX_DIR, "*.onnx"))
+        if "_prep" not in os.path.basename(p)
+        and "quant_diag" not in p
+    )
 
 
 # ── 전처리 ───────────────────────────────────────────────────────────────────
@@ -95,47 +104,42 @@ def infer(session: ort.InferenceSession, img: np.ndarray) -> int:
 
 # ── 양자화 변형 정의 ──────────────────────────────────────────────────────────
 
-def get_variants(input_name: str):
+def get_variants(input_name: str, onnx_fp32: str, onnx_prep: str, out_dir: str, use_prep: bool = False):
     """(label, output_path, build_fn) 리스트 반환."""
-
+    src = onnx_prep if use_prep else onnx_fp32
+    tag = "_prep" if use_prep else ""
     variants = []
 
-    # ── Dynamic INT8 (weight only, no calibration needed) ─────────────────
-    dyn_path = os.path.join(OUT_DIR, "dynamic_int8.onnx")
-    def build_dynamic(out=dyn_path):
+    # ── Dynamic INT8 (weight only, calibration 불필요) ────────────────────
+    dyn_path = os.path.join(out_dir, f"dynamic_int8{tag}.onnx")
+    def build_dynamic(out=dyn_path, s=src):
         if not os.path.exists(out):
-            quantize_dynamic(ONNX_FP32, out, weight_type=QuantType.QInt8)
-    variants.append(("Dynamic INT8 (weight-only)", dyn_path, build_dynamic))
+            quantize_dynamic(s, out, weight_type=QuantType.QInt8)
+    variants.append((f"Dynamic INT8{tag}", dyn_path, build_dynamic))
 
-    # ── Static INT8 변형들 ─────────────────────────────────────────────────
+    # ── Static INT8 변형들 ────────────────────────────────────────────────
     static_cases = [
-        # (suffix, per_channel, calib_method, quant_format, act_type, wt_type)
         ("static_int8_pertensor_minmax_qdq",
-         False, CalibrationMethod.MinMax, QuantFormat.QDQ, QuantType.QInt8, QuantType.QInt8),
-
+         False, CalibrationMethod.MinMax,       QuantFormat.QDQ,       QuantType.QInt8,  QuantType.QInt8),
         ("static_int8_perchannel_minmax_qdq",
-         True,  CalibrationMethod.MinMax, QuantFormat.QDQ, QuantType.QInt8, QuantType.QInt8),
-
+         True,  CalibrationMethod.MinMax,       QuantFormat.QDQ,       QuantType.QInt8,  QuantType.QInt8),
         ("static_int8_perchannel_entropy_qdq",
-         True,  CalibrationMethod.Entropy, QuantFormat.QDQ, QuantType.QInt8, QuantType.QInt8),
-
+         True,  CalibrationMethod.Entropy,      QuantFormat.QDQ,       QuantType.QInt8,  QuantType.QInt8),
         ("static_int8_perchannel_percentile_qdq",
-         True,  CalibrationMethod.Percentile, QuantFormat.QDQ, QuantType.QInt8, QuantType.QInt8),
-
+         True,  CalibrationMethod.Percentile,   QuantFormat.QDQ,       QuantType.QInt8,  QuantType.QInt8),
         ("static_int8_perchannel_minmax_qop",
-         True,  CalibrationMethod.MinMax, QuantFormat.QOperator, QuantType.QInt8, QuantType.QInt8),
-
+         True,  CalibrationMethod.MinMax,       QuantFormat.QOperator, QuantType.QInt8,  QuantType.QInt8),
         ("static_uint8_perchannel_minmax_qdq",
-         True,  CalibrationMethod.MinMax, QuantFormat.QDQ, QuantType.QUInt8, QuantType.QUInt8),
+         True,  CalibrationMethod.MinMax,       QuantFormat.QDQ,       QuantType.QUInt8, QuantType.QUInt8),
     ]
 
     for (suffix, per_ch, calib_m, fmt, act_t, wt_t) in static_cases:
-        out_path = os.path.join(OUT_DIR, f"{suffix}.onnx")
-        def build_static(out=out_path, pc=per_ch, cm=calib_m, f=fmt, at=act_t, wt=wt_t):
+        out_path = os.path.join(out_dir, f"{suffix}{tag}.onnx")
+        def build_static(out=out_path, pc=per_ch, cm=calib_m, f=fmt, at=act_t, wt=wt_t, s=src):
             if not os.path.exists(out):
                 reader = CalibReader(input_name)
                 quantize_static(
-                    model_input=ONNX_FP32,
+                    model_input=s,
                     model_output=out,
                     calibration_data_reader=reader,
                     calibrate_method=cm,
@@ -145,17 +149,17 @@ def get_variants(input_name: str):
                     per_channel=pc,
                     reduce_range=False,
                 )
-        variants.append((suffix, out_path, build_static))
+        variants.append((f"{suffix}{tag}", out_path, build_static))
 
-    # ── INT16 (onnxruntime >= 1.16 필요) ───────────────────────────────────
+    # ── UINT16 activation (onnxruntime >= 1.16) ───────────────────────────
     try:
         _ = QuantType.QUInt16
-        int16_path = os.path.join(OUT_DIR, "static_uint16_perchannel_minmax.onnx")
-        def build_int16(out=int16_path):
+        int16_path = os.path.join(out_dir, f"static_uint16_perchannel_minmax{tag}.onnx")
+        def build_int16(out=int16_path, s=src):
             if not os.path.exists(out):
                 reader = CalibReader(input_name)
                 quantize_static(
-                    model_input=ONNX_FP32,
+                    model_input=s,
                     model_output=out,
                     calibration_data_reader=reader,
                     calibrate_method=CalibrationMethod.MinMax,
@@ -165,74 +169,104 @@ def get_variants(input_name: str):
                     per_channel=True,
                     reduce_range=False,
                 )
-        variants.append(("Static UINT16 act + INT8 weight", int16_path, build_int16))
+        variants.append((f"UINT16 act + INT8 wt{tag}", int16_path, build_int16))
     except AttributeError:
         print("[INFO] onnxruntime < 1.16, INT16 quantization 스킵")
 
     return variants
 
 
-# ── 메인 ─────────────────────────────────────────────────────────────────────
+# ── 결과 출력 ─────────────────────────────────────────────────────────────────
 
-def main():
-    if not os.path.exists(ONNX_FP32):
-        print(f"[ERROR] {ONNX_FP32} 없음")
-        return
-
-    labels = load_labels()
-
-    sess_fp32 = ort.InferenceSession(ONNX_FP32, providers=["CPUExecutionProvider"])
-    input_name = sess_fp32.get_inputs()[0].name
-
-    test_imgs = sorted(glob.glob(os.path.join(CALIB_DIR, "**", "*.jpg"), recursive=True))[:N_TEST]
-
-    # float32 예측 미리 계산
-    fp32_preds = [infer(sess_fp32, preprocess(p)) for p in test_imgs]
-
-    variants = get_variants(input_name)
-
-    print(f"\n{'='*70}")
-    print(f"{'방법':<45} {'일치':>5}  {'Top-1 match rate':>16}")
-    print(f"{'='*70}")
-
-    # float32 baseline
-    print(f"{'FP32 (baseline)':<45} {'10/10':>5}  {'100.0%':>16}")
-    print(f"{'-'*70}")
-
+def run_variants(variants, fp32_preds, test_imgs, n_test):
+    W = 52
+    print(f"{'방법':<{W}} {'일치':>5}  {'match rate':>10}")
+    print(f"{'─'*70}")
+    print(f"{'FP32 (baseline)':<{W}} {n_test:>2}/{n_test}  {'100.0%':>10}")
+    print(f"{'─'*70}")
     for label, out_path, build_fn in variants:
-        # 컴파일
         try:
             build_fn()
         except Exception as e:
-            print(f"{label:<45} [컴파일 실패: {e}]")
+            print(f"{label:<{W}} [양자화 실패: {e}]")
             continue
-
         if not os.path.exists(out_path):
-            print(f"{label:<45} [파일 없음]")
+            print(f"{label:<{W}} [파일 없음]")
             continue
-
-        # 추론
         try:
             sess = ort.InferenceSession(out_path, providers=["CPUExecutionProvider"])
             preds = [infer(sess, preprocess(p)) for p in test_imgs]
             match = sum(p == q for p, q in zip(fp32_preds, preds))
-            rate = match / N_TEST * 100
-            bar = "✓" if match == N_TEST else ("△" if match >= N_TEST * 0.7 else "✗")
-            print(f"{label:<45} {match:>2}/{N_TEST}  {rate:>14.1f}%  {bar}")
+            rate = match / n_test * 100
+            mark = "✓" if rate >= 90 else ("△" if rate >= 70 else "✗")
+            print(f"{label:<{W}} {match:>2}/{n_test}  {rate:>9.1f}%  {mark}")
         except Exception as e:
-            print(f"{label:<45} [추론 실패: {e}]")
+            print(f"{label:<{W}} [추론 실패: {e}]")
+    print(f"{'─'*70}")
 
-    print(f"{'='*70}")
-    print("\n판단 기준:")
-    print("  ✓ (90%+) : 해당 양자화는 정상 → qbcompiler 문제")
-    print("  △ (70%+) : 부분 오차 → 경계 케이스")
-    print("  ✗ (70%-) : 양자화 자체가 EfficientViT에 부적합")
 
-    # 상세 출력: fp32 vs 각 방법 top-1 label
-    print(f"\n{'─'*70}")
-    print("이미지별 상세 (FP32 예측):")
-    for i, (p, img_path) in enumerate(zip(fp32_preds, test_imgs)):
-        print(f"  [{i+1:2d}] {os.path.basename(img_path):<30s} → [{p:4d}] {labels[p]}")
+# ── 메인 ─────────────────────────────────────────────────────────────────────
+
+def diagnose_model(onnx_fp32: str, test_imgs: list, fp32_preds: list, labels: list):
+    """단일 모델에 대해 Round1(원본) + Round2(prep) 양자화 비교."""
+    stem    = os.path.splitext(os.path.basename(onnx_fp32))[0]
+    out_dir = os.path.join(ONNX_DIR, "quant_diag", stem)
+    os.makedirs(out_dir, exist_ok=True)
+    onnx_prep = os.path.join(ONNX_DIR, f"{stem}_prep.onnx")
+
+    sess_fp32  = ort.InferenceSession(onnx_fp32, providers=["CPUExecutionProvider"])
+    input_name = sess_fp32.get_inputs()[0].name
+
+    print(f"\n{'#'*70}")
+    print(f"  모델: {os.path.basename(onnx_fp32)}")
+    print(f"{'#'*70}")
+
+    # Round 1 — 원본
+    print("\n[Round 1] 원본 ONNX 양자화")
+    run_variants(
+        get_variants(input_name, onnx_fp32, onnx_prep, out_dir, use_prep=False),
+        fp32_preds, test_imgs, N_TEST,
+    )
+
+    # pre-processing
+    print("\n[pre-processing] shape inference + op fusion + graph optimization...")
+    if not os.path.exists(onnx_prep):
+        quant_pre_process(onnx_fp32, onnx_prep, skip_optimization=False)
+        print(f"  저장: {onnx_prep}")
+    else:
+        print(f"  [SKIP] 이미 존재")
+
+    # Round 2 — prep
+    print("\n[Round 2] pre-processed ONNX 양자화")
+    run_variants(
+        get_variants(input_name, onnx_fp32, onnx_prep, out_dir, use_prep=True),
+        fp32_preds, test_imgs, N_TEST,
+    )
+
+
+def main():
+    models    = find_models()
+    if not models:
+        print(f"[ERROR] {ONNX_DIR} 에 ONNX 파일 없음")
+        return
+
+    labels    = load_labels()
+    test_imgs = sorted(glob.glob(os.path.join(CALIB_DIR, "**", "*.jpg"), recursive=True))[:N_TEST]
+
+    # FP32 예측은 첫 번째 모델 기준 (모델마다 다르므로 각 모델에서 재계산)
+    print(f"발견된 모델 {len(models)}개: {[os.path.basename(m) for m in models]}")
+    print(f"테스트 이미지: {N_TEST}장  |  calibration: {N_CALIB}장\n")
+
+    for onnx_fp32 in models:
+        sess   = ort.InferenceSession(onnx_fp32, providers=["CPUExecutionProvider"])
+        fp32_preds = [infer(sess, preprocess(p)) for p in test_imgs]
+        diagnose_model(onnx_fp32, test_imgs, fp32_preds, labels)
+
+    print(f"\n{'='*70}")
+    print("판단 기준:")
+    print("  ✓ 90%+  : 해당 양자화 정상 → qbcompiler 문제")
+    print("  △ 70%+  : 경계 케이스")
+    print("  ✗ 70%-  : EfficientViT 자체가 INT8 PTQ에 부적합")
 
 
 if __name__ == "__main__":
