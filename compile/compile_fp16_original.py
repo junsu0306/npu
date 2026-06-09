@@ -39,10 +39,10 @@ for hwc_path in hwc_files:
         np.save(chw_path, arr.transpose(2, 0, 1))  # (3, 224, 224)
     chw_files.append(chw_path)
 
-CALIB_TXT = os.path.join(BASE_DIR, "calib_chw.txt")
+CALIB_TXT = os.path.join(BASE_DIR, "calib_hwc.txt")
 with open(CALIB_TXT, "w") as f:
-    f.write("\n".join(chw_files) + "\n")
-print(f"Calibration list: {len(chw_files)} CHW files -> {CALIB_TXT}")
+    f.write("\n".join(hwc_files) + "\n")
+print(f"Calibration list: {len(hwc_files)} HWC files -> {CALIB_TXT}")
 
 MXQ_DIR  = os.path.join(ASSETS_DIR, "mxq")
 ONNX_DIR = os.path.join(ASSETS_DIR, "onnx")
@@ -106,9 +106,9 @@ def compile_model(onnx_path: str, mxq_path: str, fp16: bool = True):
     mxq_compile(
         model=onnx_path,
         save_path=mxq_path,
-        calib_data_path=CALIB_TXT,   # CHW (3,224,224) — cpu_offload+onnx+NCHW 조합에 필요
+        calib_data_path=CALIB_TXT,
         backend="onnx",
-        cpu_offload=True,
+        # cpu_offload=True,  # 크래시 원인 격리 테스트 — 일단 제거
         compile_config=compile_cfg,
     )
     print(f"Saved: {mxq_path}")
