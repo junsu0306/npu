@@ -119,8 +119,10 @@ def compile_model(onnx_path: str, mxq_path: str, fp16: bool = True):
 FP16 = False   # ← True/False 로 전환하며 테스트
 
 MODELS = [
-    ("efficientvit_b0_original_r224_nchw.onnx", "efficientvit_b0_original_fp16.mxq"),
-    ("efficientvit_b1_original_r224_nchw.onnx", "efficientvit_b1_original_fp16.mxq"),
+    # _fixed: ReduceSum → MatMul 교체 + no-op Cast 제거 버전
+    # 먼저 compile/fix_original_onnx.py 를 실행해서 생성할 것
+    ("efficientvit_b0_original_r224_nchw_fixed.onnx", "efficientvit_b0_original_fp16.mxq"),
+    ("efficientvit_b1_original_r224_nchw_fixed.onnx", "efficientvit_b1_original_fp16.mxq"),
 ]
 
 for onnx_name, mxq_name in MODELS:
