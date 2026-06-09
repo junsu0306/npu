@@ -227,7 +227,27 @@ Output = φ(Q) @ (φ(K)^T @ V) / (φ(Q) @ Σφ(K))
 
 **timm과의 차이**: timm은 이 분모를 `ReduceSum` 대신 `Slice` + `Add` + `Div` 조합으로 구현한다. 동적 패딩 후 특정 위치에서 값을 slicing해서 분모를 구하는 방식으로, 연산 수는 많지만 ONNX export 과정에서 INT64가 개입한다.
 
-**qbcompiler에서의 문제**: `ReduceSum`은 "100% supported" 연산으로 분류되지만, quantization 단계에서 C++ 내부 문자열 할당(`basic_string::_M_create`)이 실패한다. 그래프 파싱은 통과하나 양자화 중 버그가 발생하는 것으로 추정된다.
+**qbcompiler에서의 문제 — 크래시 원인 확정**
+
+공식 문서의 qbcompiler `ReduceSum` 스펙과 실제 모델 사이에 구조적 불일치가 있다.
+
+| 항목 | qbcompiler 스펙 | original 모델 실제 |
+|---|---|---|
+| 입력 수 | **1개** (data만) | **2개** (data + axes 텐서) |
+| axes 형식 | `reduce_axes: int32[]` (attribute) | `Constant(int64, [-1])` → 두 번째 input |
+| axes 값 | 양수 정수 배열 | **`-1`** (음수 인덱스) |
+
+ONNX ReduceSum은 **opset 11/12까지 axes가 attribute**였지만, **opset 13부터 optional한 두 번째 input tensor로 변경됐다.** original 모델은 opset 13으로 export됐고, axes를 `Constant(dtype=int64, value=[-1])` 노드의 출력으로 ReduceSum에 넘긴다.
+
+qbcompiler는 opset 13 방식(2-input)을 지원하지 않아 C++ 백엔드가 두 번째 입력을 처리하다가 `basic_string::_M_create`로 크래시한다. 그래프 파싱 단계("100% supported")는 통과하지만, 실제 양자화 연산 구성 시점에서 실패하는 것이다.
+
+**잠재적 수정**: original 모델 ONNX에서 ReduceSum을 opset 11 방식으로 변환하면 크래시를 해결할 수 있다.
+```python
+# 변환 방향:
+# Before: ReduceSum(inputs=[data, Constant(int64,[-1])], attrs={keepdims:1})
+# After:  ReduceSum(inputs=[data], attrs={axes:[last_dim], keepdims:1})
+# dtype:  int64 → int32, 음수 인덱스 → 양수로 변환 필요
+```
 
 ### Shape / Gather (timm 전용, 각 13개)
 

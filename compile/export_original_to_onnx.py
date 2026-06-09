@@ -62,35 +62,40 @@
 """
 
 import os
+import sys
 import torch
 import onnx
 
+# ─── repo 루트를 sys.path 에 추가 (이 스크립트 위치: assets/compile_example/) ──
+# __file__ 기준으로 두 단계 올라가면 repo 루트(efficientvit 패키지 상위 디렉터리)
+HERE      = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
 # ─── ▶ 연동 지점 1/2: 모델 팩토리 import ──────────────────────────────────────
-# repo 버전에 따라 경로/이름이 다르다. 안 맞으면 이 repo 코드 보고 고쳐라.
 try:
-    from efficientvit.cls_model_zoo import create_cls_model
-except ImportError as e:  # pragma: no cover
+    from efficientvit.cls_model_zoo import create_efficientvit_cls_model
+except ImportError as e:
     raise SystemExit(
         "이 repo 의 cls 모델 팩토리를 import 하지 못했습니다.\n"
-        "  → cls_model_zoo / model zoo 코드를 열어 올바른 함수명으로 바꾸세요.\n"
+        f"  REPO_ROOT = {REPO_ROOT}\n"
+        "  → 위 경로 아래에 efficientvit/ 패키지 폴더가 있는지 확인하세요.\n"
         f"(import error: {e})"
     )
 
 # ─── 설정 ────────────────────────────────────────────────────────────────────
-HERE = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR = os.path.join(HERE, "onnx_export")   # 생성된 ONNX 가 여기 저장됨
+OUT_DIR = os.path.join(HERE, "onnx_export")
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# ─── ▶ 연동 지점 2/2: 가중치 경로 & repo 모델 이름 ────────────────────────────
-# WEIGHT 경로를 이 repo 에서 .pt 가 실제 있는 위치로 바꿔라.
-# name 은 build_model() 의 팩토리가 받는 이름에 맞춰라(예: "b0" 또는 "efficientvit-b0").
-# 출력 onnx 파일명은 절대 바꾸지 말 것(compile 쪽이 이 이름을 기대함).
+# ─── ▶ 연동 지점 2/2: 가중치 경로 ─────────────────────────────────────────────
+# REPO_ROOT 기준 상대 경로. 실제 .pt 위치로 수정할 것.
 MODELS = [
     ("b0",
-     "assets/pt/efficientvit_b0_original_r224.pt",                  # ← 경로 수정
+     os.path.join(REPO_ROOT, "assets", "checkpoints", "cls", "efficientvit_b0_r224.pt"),
      os.path.join(OUT_DIR, "efficientvit_b0_original_r224_nchw.onnx")),
     ("b1",
-     "assets/pt/efficientvit_b1_original_r224.pt",                  # ← 경로 수정
+     os.path.join(REPO_ROOT, "assets", "checkpoints", "cls", "efficientvit_b1_r224.pt"),
      os.path.join(OUT_DIR, "efficientvit_b1_original_r224_nchw.onnx")),
 ]
 
@@ -99,17 +104,7 @@ dummy_input = torch.randn(1, 3, RESOLUTION, RESOLUTION)
 
 
 def build_model(name, weight_path):
-    """
-    ▶ 이 repo 의 실제 API 에 맞게 고쳐라.
-      - create_cls_model 은 weight_url 의 {'state_dict': ...} 래퍼/순수 state_dict
-        둘 다 풀어 로드한다고 가정한 코드다. repo 구현을 확인하고 맞춰라.
-      - 만약 팩토리가 가중치 로딩을 안 해주면 아래처럼 직접 로드:
-            model = efficientvit_cls_b0()
-            sd = torch.load(weight_path, map_location="cpu")
-            sd = sd.get("state_dict", sd)
-            model.load_state_dict(sd)
-    """
-    model = create_cls_model(name=name, pretrained=True, weight_url=weight_path)
+    model = create_efficientvit_cls_model(name=name, pretrained=True, weight_url=weight_path)
     model.eval()
     return model
 
