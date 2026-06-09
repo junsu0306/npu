@@ -116,7 +116,7 @@ def compile_model(onnx_path: str, mxq_path: str, fp16: bool = True):
 
 # fp16=False 로 먼저 실행해 activation_16bits 없이 기본 INT8 컴파일이 되는지 확인.
 # 성공하면 fp16=True 로 변경해서 activation_16bits 크래시 여부 재검증.
-FP16 = True   # ← True/False 로 전환하며 테스트
+FP16 = False   # ← True/False 로 전환하며 테스트
 
 MODELS = [
     ("efficientvit_b0_original_r224_nchw.onnx", "efficientvit_b0_original_fp16.mxq"),
