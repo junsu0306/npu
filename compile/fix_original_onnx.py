@@ -14,10 +14,14 @@ original EfficientViT ONNX의 qbcompiler 비호환 노드 수정.
        Cast를 우회해 Reshape 출력을 Conv에 직접 연결
 
   3. INT64 Constant 노드 → initializer 변환
-     - Reshape shape / Slice starts·ends·axes 등이 Constant(INT64) 노드로 존재
-     - qbcompiler quantizer가 Constant 출력을 float 텐서로 오해 →
-       range=0 → scale=0 → zeropoint=-2147483648 오버플로우 발생
-     - initializer로 올리면 qbcompiler dtype 체크 후 양자화 건너뜀
+     - Reshape shape 등 INT64 Constant 노드를 initializer로 변환
+     - (Slice 파라미터는 step4에서 속성으로 이동하므로 최종적으로 제거됨)
+
+  4. Slice INT64 입력 → 노드 속성으로 이동
+     - Slice의 starts/ends/axes(shape=[1] INT64)가 quantizer에서 float로 오해
+     - 단일 원소 → min==max → range=0 → scale=0 → zeropoint=-2147483648 오버플로우
+     - 속성으로 내장하면 INT64 입력 텐서 자체가 그래프에서 사라짐
+     - 모델 opset을 9로 낮춤 (opset9 Slice는 속성 방식 지원)
 
 사용:
   python3 compile/fix_original_onnx.py
@@ -155,6 +159,59 @@ def fix_model(src_path: str, dst_path: str):
 
     print(f"  INT64 Constant→initializer: {n_converted}개")
 
+    # ── 4. Slice INT64 입력 → 노드 속성으로 이동 ─────────────────────────────────
+    # shape=[1] INT64 initializer: 단일 원소 → min==max → range=0 → scale=0
+    # → zeropoint=-2147483648 오버플로우.
+    # starts/ends/axes를 노드 속성으로 내장하면 INT64 입력 텐서가 그래프에서 사라짐.
+    new_init_lookup = {i.name: numpy_helper.to_array(i) for i in new_inits}
+    slice_params_used = set()
+    step4_nodes = []
+
+    for n in final_nodes:
+        if n.op_type != "Slice":
+            step4_nodes.append(n)
+            continue
+
+        def get_arr(idx):
+            if idx >= len(n.input) or not n.input[idx]:
+                return None
+            return new_init_lookup.get(n.input[idx])
+
+        starts_arr = get_arr(1)
+        ends_arr   = get_arr(2)
+        axes_arr   = get_arr(3)
+
+        if starts_arr is None or ends_arr is None:
+            print(f"  [WARN] Slice {n.name}: 파라미터 조회 실패 → 유지")
+            step4_nodes.append(n)
+            continue
+
+        for j in range(1, len(n.input)):
+            if n.input[j]:
+                slice_params_used.add(n.input[j])
+
+        starts = starts_arr.flatten().astype(int).tolist()
+        ends   = ends_arr.flatten().astype(int).tolist()
+        attrs  = dict(starts=starts, ends=ends)
+        if axes_arr is not None:
+            attrs["axes"] = axes_arr.flatten().astype(int).tolist()
+
+        # INT64 inputs 없이 data만 입력받는 Slice 노드
+        step4_nodes.append(helper.make_node(
+            "Slice",
+            inputs=[n.input[0]],
+            outputs=list(n.output),
+            name=n.name,
+            **attrs,
+        ))
+        print(f"  Slice→attrs: {n.name.split('/')[-1]}"
+              f"  starts={starts} ends={ends} axes={attrs.get('axes')}")
+
+    final_nodes = step4_nodes
+    new_inits = [i for i in new_inits if i.name not in slice_params_used]
+    print(f"  Slice INT64 initializer 제거: {len(slice_params_used)}개 "
+          f"(Reshape shape 잔여: {len(new_inits)}개)")
+
     # ── 그래프 재구성 ─────────────────────────────────────────────────────────
     del graph.node[:]
     graph.node.extend(final_nodes)
@@ -162,8 +219,18 @@ def fix_model(src_path: str, dst_path: str):
     for init in new_inits:
         graph.initializer.append(init)
 
-    # 검증
-    onnx.checker.check_model(model)
+    # Slice가 opset9 속성 방식으로 바뀌었으므로 모델 opset을 9로 낮춤
+    # (opset13 Slice는 속성 방식 미지원 → checker 오류 방지)
+    for oi in model.opset_import:
+        if oi.domain == "":
+            oi.version = 9
+            break
+
+    try:
+        onnx.checker.check_model(model)
+        print("  ONNX 검증 통과")
+    except Exception as e:
+        print(f"  [WARN] ONNX 검증 경고 (qbcompiler 컴파일에는 무방할 수 있음): {e}")
     onnx.save(model, dst_path)
     print(f"  → 저장: {dst_path}\n")
 

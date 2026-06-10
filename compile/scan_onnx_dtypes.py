@@ -41,7 +41,7 @@ def scan(path: str):
 
     print(f"\n[initializer] non-float32: {len(non_f32_inits)}")
     for name, dt, dims, sample in non_f32_inits:
-        print(f"  {DTYPE_NAME.get(dt, dt):10s} shape={dims:20s} sample={sample!r:>20}  {name[:60]}")
+        print(f"  {DTYPE_NAME.get(dt, dt):10s} shape={str(dims):20s} sample={str(sample):>20}  {name[:60]}")
 
     # ── 2. Constant 노드 비-float32 ──────────────────────────────────────────
     non_f32_consts = []
