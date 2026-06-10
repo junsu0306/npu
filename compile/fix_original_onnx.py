@@ -58,9 +58,13 @@ def fix_model(src_path: str, dst_path: str):
             for o in n.output:
                 const_outputs[o] = i
 
-    # ── 1. ReduceSum → MatMul 교체 ─────────────────────────────────────────────
-    ones_cache = {}   # dim → initializer name (재사용)
-    new_nodes  = []
+    # ── 1. ReduceSum opset13(axes 입력) → opset9(axes 속성) 변환 ────────────────
+    # opset13: ReduceSum(data, axes_tensor) — INT64 axes 텐서 필요
+    # opset9:  ReduceSum(data, axes=[N], keepdims=1) — 속성 방식, 별도 텐서 불필요
+    # MatMul(ones) 대체 방식은 all-1.0 초기값 → range=0 → zeropoint 오버플로우 유발.
+    # ReduceSum 직접 속성 방식은 별도 initializer 없으므로 해당 문제 없음.
+    vi_map   = {vi.name: vi for vi in list(graph.value_info) + list(graph.input)}
+    new_nodes = []
 
     for i, n in enumerate(nodes):
         if n.op_type != "ReduceSum":
@@ -70,42 +74,34 @@ def fix_model(src_path: str, dst_path: str):
         data_in  = n.input[0]
         data_out = n.output[0]
 
-        # shape 조회
-        vi_map = {vi.name: vi for vi in list(graph.value_info) + list(graph.input)}
+        # shape 조회 → 마지막 축의 양수 인덱스 계산
         vi = vi_map.get(data_in)
         if vi is None or not vi.type.tensor_type.shape:
-            print(f"  [WARN] {n.name}: shape 정보 없음 → 스킵")
+            print(f"  [WARN] {n.name}: shape 정보 없음 → 유지")
             new_nodes.append(n)
             continue
 
-        dims = [d.dim_value for d in vi.type.tensor_type.shape.dim]
-        last_dim = dims[-1]  # reduce 대상 차원
+        dims       = [d.dim_value for d in vi.type.tensor_type.shape.dim]
+        last_axis  = len(dims) - 1  # -1 대신 양수 인덱스 사용 (qbcompiler 호환)
 
-        # ones 초기화 (한 번만 생성)
-        ones_name = f"__ones_{last_dim}_1__"
-        if ones_name not in ones_cache:
-            ones_arr  = np.ones((last_dim, 1), dtype=np.float32)
-            ones_init = numpy_helper.from_array(ones_arr, name=ones_name)
-            new_inits.append(ones_init)
-            ones_cache[ones_name] = ones_name
-
-        # MatMul 노드 생성 (output: [B,H,S,1] = keepdims=1 유지)
-        matmul_node = helper.make_node(
-            "MatMul",
-            inputs=[data_in, ones_name],
+        # opset9 속성 방식 ReduceSum (단일 입력, axes 속성)
+        new_rs = helper.make_node(
+            "ReduceSum",
+            inputs=[data_in],
             outputs=[data_out],
-            name=n.name.replace("ReduceSum", "MatMul_ones"),
+            name=n.name,
+            axes=[last_axis],
+            keepdims=1,
         )
-        new_nodes.append(matmul_node)
-        print(f"  ReduceSum→MatMul: {n.name.split('main/')[-1]}  "
-              f"[{dims}] axis=-1 (dim={last_dim})")
+        new_nodes.append(new_rs)
+        print(f"  ReduceSum opset9: {n.name.split('main/')[-1]}  "
+              f"[{dims}] axes=[{last_axis}] keepdims=1")
 
-        # axes Constant 노드도 제거 (opset13 방식일 경우)
+        # opset13 axes Constant 노드 제거
         if len(n.input) > 1:
             axes_input = n.input[1]
             if axes_input in const_outputs:
-                axes_idx = const_outputs[axes_input]
-                remove_nodes.add(axes_idx)
+                remove_nodes.add(const_outputs[axes_input])
 
     # ── 2. no-op Cast (float32 → float32) 제거 ────────────────────────────────
     # Reshape → Cast(to=float32) → Conv 패턴에서 Cast를 우회
