@@ -76,19 +76,59 @@ def scan(path: str):
         print("  *** FLOAT64 발견 → 이게 zeropoint 오버플로우 원인 ***")
 
     # ── 4. ReduceSum 잔존 여부 ────────────────────────────────────────────────
-    rs_nodes = [n.name for n in graph.node if n.op_type == "ReduceSum"]
-    print(f"\n[ReduceSum 잔존]: {len(rs_nodes)}  {rs_nodes}")
+    rs_info = []
+    for n in graph.node:
+        if n.op_type == "ReduceSum":
+            axes = next((list(a.ints) for a in n.attribute if a.name == "axes"), None)
+            n_inputs = len(n.input)
+            rs_info.append((n.name, axes, n_inputs))
+    print(f"\n[ReduceSum 잔존]: {len(rs_info)}")
+    for rname, axes, ni in rs_info:
+        style = "opset9(attr)" if axes is not None else "opset13(input)"
+        print(f"  {style}  axes={axes}  inputs={ni}  {rname.split('main/')[-1]}")
 
-    # ── 5. Cast 잔존 여부 (float32→float32) ──────────────────────────────────
-    noop_casts = []
+    # ── 5. Cast 잔존 여부 ──────────────────────────────────────────────────────
+    noop_casts, int64_casts = [], []
     for n in graph.node:
         if n.op_type == "Cast":
             for attr in n.attribute:
-                if attr.name == "to" and attr.i == TensorProto.FLOAT:
-                    noop_casts.append(n.name)
+                if attr.name == "to":
+                    if attr.i == TensorProto.FLOAT:
+                        noop_casts.append(n.name)
+                    elif attr.i == TensorProto.INT64:
+                        int64_casts.append(n.name)
     print(f"\n[no-op Cast(float32) 잔존]: {len(noop_casts)}")
+    print(f"[Cast(→int64) 잔존]: {len(int64_casts)}")
+    for n in int64_casts:
+        print(f"  {n.split('main/')[-1]}")
 
-    # ── 6. 전체 노드 op_type 분포 ─────────────────────────────────────────────
+    # ── 6. float32 Constant 값 (range=0 위험 체크) ────────────────────────────
+    f32_consts = []
+    for n in graph.node:
+        if n.op_type == "Constant":
+            for attr in n.attribute:
+                if attr.name == "value" and attr.t.data_type == TensorProto.FLOAT:
+                    arr = numpy_helper.to_array(attr.t)
+                    f32_consts.append((n.name, list(attr.t.dims),
+                                       float(arr.min()), float(arr.max()), arr.size))
+    print(f"\n[float32 Constant]: {len(f32_consts)}")
+    for name, dims, mn, mx, sz in f32_consts:
+        flag = "RANGE=0" if (mx - mn) == 0 else "ok"
+        print(f"  {flag}  shape={dims}  [{mn:.6f}, {mx:.6f}]  {name[:60]}")
+
+    # ── 7. float32 initializer range=0 위험 체크 ─────────────────────────────
+    risky_inits = []
+    for init in graph.initializer:
+        if init.data_type != TensorProto.FLOAT:
+            continue
+        arr = numpy_helper.to_array(init)
+        if arr.max() == arr.min():
+            risky_inits.append((init.name, list(init.dims), float(arr.min()), arr.size))
+    print(f"\n[float32 initializer range=0]: {len(risky_inits)}")
+    for name, dims, val, sz in risky_inits[:20]:
+        print(f"  shape={dims}  val={val:.6f}  size={sz}  {name[:60]}")
+
+    # ── 8. 전체 노드 op_type 분포 ─────────────────────────────────────────────
     from collections import Counter
     ctr = Counter(n.op_type for n in graph.node)
     print(f"\n[op_type 분포] total={len(graph.node)}")
