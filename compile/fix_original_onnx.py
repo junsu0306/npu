@@ -3,25 +3,25 @@
 original EfficientViT ONNX의 qbcompiler 비호환 노드 수정.
 
 수정 내용:
-  1. ReduceSum(axes=[-1], keepdims=1)
-       → MatMul(X, ones)  (qbcompiler가 확실히 지원)
-     - 음수 축(-1), opset13 두 번째 input 방식 모두 qbcompiler가 처리 못 함
-     - ReduceSum(X, axis=-1, keepdims=1) ≡ MatMul(X, ones_col)
-       X: [B,H,S,D] → ones: [D,1] → output: [B,H,S,1]
+  1. ReduceSum opset13(axes input) → opset9(axes attribute) 변환
+     - opset13: INT64 axes 텐서가 그래프에 노출 → qbcompiler가 float로 오해 → overflow
+     - opset9 속성 방식: ReduceSum(data, axes=[N], keepdims=1) — 입력 텐서 없음
 
   2. no-op Cast (float32 → float32) 제거
-     - context_module 끝 Reshape → Cast(float32) → Conv 구간에서
-       Cast를 우회해 Reshape 출력을 Conv에 직접 연결
 
   3. INT64 Constant 노드 → initializer 변환
-     - Reshape shape 등 INT64 Constant 노드를 initializer로 변환
-     - (Slice 파라미터는 step4에서 속성으로 이동하므로 최종적으로 제거됨)
+     - step4에서 재처리 (Slice params 제거, Reshape shape 유지)
 
   4. Slice INT64 입력 → 노드 속성으로 이동
-     - Slice의 starts/ends/axes(shape=[1] INT64)가 quantizer에서 float로 오해
-     - 단일 원소 → min==max → range=0 → scale=0 → zeropoint=-2147483648 오버플로우
-     - 속성으로 내장하면 INT64 입력 텐서 자체가 그래프에서 사라짐
-     - 모델 opset을 9로 낮춤 (opset9 Slice는 속성 방식 지원)
+     - 단일 원소 INT64 → range=0 → scale=0 → overflow
+     - 속성으로 내장하면 INT64 입력 텐서가 그래프에서 사라짐
+
+  5. Reshape INT64 shape → float32 initializer + Cast(float32→int64)
+
+  6. float32 scalar Constant (shape=[]) 처리
+     - 단일 원소 → range=0 → overflow
+     - Add/Sub(x, 0.0 or tiny_eps) → 우회 (no-op 제거)
+     - Pow(x, 2.0) → Mul(x, x) 교체
 
 사용:
   python3 compile/fix_original_onnx.py
