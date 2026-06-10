@@ -105,12 +105,11 @@ def fix_model(src_path: str, dst_path: str):
 
     # ── 2. no-op Cast (float32 → float32) 제거 ────────────────────────────────
     # Reshape → Cast(to=float32) → Conv 패턴에서 Cast를 우회
-    final_nodes = []
+    after_cast = []
     cast_bypass = {}  # {cast_output: cast_input}
 
     for n in new_nodes:
         if n.op_type == "Cast":
-            # to dtype 확인
             to_dtype = None
             for attr in n.attribute:
                 if attr.name == "to":
@@ -118,19 +117,43 @@ def fix_model(src_path: str, dst_path: str):
             if to_dtype == TensorProto.FLOAT:  # 1 = float32
                 cast_bypass[n.output[0]] = n.input[0]
                 print(f"  no-op Cast 제거: {n.name.split('main/')[-1]}  float32→float32")
-                continue  # 이 Cast 노드 건너뜀
-        final_nodes.append(n)
+                continue
+        after_cast.append(n)
 
-    # Cast를 참조하는 후속 노드의 입력 이름 교체
-    for n in final_nodes:
+    for n in after_cast:
         for j, inp in enumerate(n.input):
             if inp in cast_bypass:
                 n.input[j] = cast_bypass[inp]
 
-    # remove_nodes 처리 (이미 new_nodes 생성 시 ReduceSum 교체됐으므로
-    # const_outputs 기반 Constant 노드만 추가 제거)
-    final_nodes = [n for i, n in enumerate(final_nodes)
-                   if n.name not in {nodes[k].name for k in remove_nodes}]
+    # remove_nodes 처리
+    after_cast = [n for n in after_cast
+                  if n.name not in {nodes[k].name for k in remove_nodes}]
+
+    # ── 3. INT64 Constant 노드 → initializer 변환 ─────────────────────────────
+    # Reshape shape / Slice starts·ends·axes 등이 Constant(INT64) 노드로 존재.
+    # qbcompiler quantizer가 이 출력 텐서를 float로 오해
+    # → range=0 → scale=0 → zeropoint=-2147483648 오버플로우.
+    # initializer로 올리면 dtype 체크 후 양자화 건너뜀.
+    final_nodes = []
+    n_converted = 0
+
+    for n in after_cast:
+        if n.op_type == "Constant":
+            converted = False
+            for attr in n.attribute:
+                if attr.name == "value" and attr.t.data_type != TensorProto.FLOAT:
+                    arr = numpy_helper.to_array(attr.t)
+                    init = numpy_helper.from_array(arr, name=n.output[0])
+                    new_inits.append(init)
+                    n_converted += 1
+                    converted = True
+                    break
+            if not converted:
+                final_nodes.append(n)
+        else:
+            final_nodes.append(n)
+
+    print(f"  INT64 Constant→initializer: {n_converted}개")
 
     # ── 그래프 재구성 ─────────────────────────────────────────────────────────
     del graph.node[:]
