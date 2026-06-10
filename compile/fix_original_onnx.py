@@ -253,6 +253,78 @@ def fix_model(src_path: str, dst_path: str):
     final_nodes = step5_nodes
     print(f"  Reshape INT64 initializer 제거: {n_reshape_fixed}개")
 
+    # ── 6. float32 scalar Constant (range=0) 처리 ────────────────────────────
+    # shape=[] 스칼라: 단일 원소 → min=max → range=0 → scale=0 → overflow.
+    # 패턴별 처리:
+    #   Add/Sub(x, 0.0 또는 tiny_eps) → no-op 또는 epsilon 제거 → 우회
+    #   Pow(x, 2.0)                   → Mul(x, x) 교체
+
+    scalar_float_consts = {}  # output_name → value
+    for n in final_nodes:
+        if n.op_type == "Constant":
+            for attr in n.attribute:
+                if attr.name == "value" and attr.t.data_type == TensorProto.FLOAT:
+                    arr = numpy_helper.to_array(attr.t)
+                    if arr.size == 1:
+                        scalar_float_consts[n.output[0]] = float(arr.flat[0])
+
+    print(f"  float32 scalar Constant: {len(scalar_float_consts)}개 검출")
+
+    step6_bypass       = {}   # {replaced_output: actual_input}
+    scalar_consts_used = set()
+    step6_nodes        = []
+
+    for n in final_nodes:
+        # Add/Sub(x, 0.0 or tiny_eps) → bypass
+        if n.op_type in ("Add", "Sub"):
+            scalar_idx = next(
+                (i for i, inp in enumerate(n.input) if inp in scalar_float_consts), None)
+            if scalar_idx is not None:
+                const_val = scalar_float_consts[n.input[scalar_idx]]
+                if abs(const_val) <= 1e-3:
+                    data_inp = n.input[1 - scalar_idx]
+                    step6_bypass[n.output[0]] = data_inp
+                    scalar_consts_used.add(n.input[scalar_idx])
+                    print(f"  Add/Sub bypass: const={const_val:.7f}  {n.name.split('/')[-1]}")
+                    continue  # 이 노드 제거
+
+        # Pow(x, 2.0) → Mul(x, x)
+        if n.op_type == "Pow":
+            exp_idx = next(
+                (i for i, inp in enumerate(n.input) if inp in scalar_float_consts), None)
+            if exp_idx is not None and abs(scalar_float_consts[n.input[exp_idx]] - 2.0) < 1e-6:
+                step6_nodes.append(helper.make_node(
+                    "Mul",
+                    inputs=[n.input[0], n.input[0]],
+                    outputs=list(n.output),
+                    name=(n.name or "") + "_sq",
+                ))
+                scalar_consts_used.add(n.input[exp_idx])
+                print(f"  Pow(x,2)→Mul(x,x): {n.name.split('/')[-1]}")
+                continue
+
+        # 사용된 scalar Constant 제거
+        if n.op_type == "Constant" and n.output[0] in scalar_consts_used:
+            continue
+
+        step6_nodes.append(n)
+
+    # bypass 연결 전파
+    for n in step6_nodes:
+        for j, inp in enumerate(n.input):
+            while inp in step6_bypass:
+                inp = step6_bypass[inp]
+            n.input[j] = inp
+
+    # 미처리 scalar Constant도 제거 (dangling 방지)
+    unhandled = [n.output[0] for n in step6_nodes
+                 if n.op_type == "Constant" and n.output[0] in scalar_float_consts
+                 and n.output[0] not in scalar_consts_used]
+    if unhandled:
+        print(f"  [WARN] scalar Constant 미처리: {unhandled}")
+    final_nodes = [n for n in step6_nodes
+                   if not (n.op_type == "Constant" and n.output[0] in scalar_float_consts)]
+
     # ── 그래프 재구성 ─────────────────────────────────────────────────────────
     del graph.node[:]
     graph.node.extend(final_nodes)
