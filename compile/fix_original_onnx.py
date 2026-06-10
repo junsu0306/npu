@@ -212,6 +212,51 @@ def fix_model(src_path: str, dst_path: str):
     print(f"  Slice INT64 initializer 제거: {len(slice_params_used)}개 "
           f"(Reshape shape 잔여: {len(new_inits)}개)")
 
+    # ── 5. Reshape INT64 shape → float32 initializer + Cast(float32→int64) ──────
+    # INT64 shape=[4] initializer도 bytes 해석 시 극소 denormal → scale 언더플로 → overflow.
+    # float32 [1.0,3.0,16.0,196.0] 는 range=195 → scale≈0.765 → 정상 양자화.
+    # qbcompiler AoT 컴파일 시 Cast 출력을 상수로 평가 → Reshape 형태에 반영.
+    int64_lookup = {i.name: numpy_helper.to_array(i) for i in new_inits
+                    if numpy_helper.to_array(i).dtype == np.int64}
+    converted_int64 = set()
+    step5_nodes = []
+    n_reshape_fixed = 0
+
+    for n in final_nodes:
+        if n.op_type != "Reshape" or len(n.input) < 2 or n.input[1] not in int64_lookup:
+            step5_nodes.append(n)
+            continue
+
+        int64_name = n.input[1]
+        int64_arr  = int64_lookup[int64_name]
+        int_vals   = int64_arr.flatten().astype(int).tolist()
+
+        f32_name  = int64_name + "_f32"
+        cast_name = int64_name + "_cast"
+
+        new_inits.append(numpy_helper.from_array(
+            int64_arr.astype(np.float32), name=f32_name))
+
+        step5_nodes.append(helper.make_node(
+            "Cast",
+            inputs=[f32_name], outputs=[cast_name],
+            name=n.name + "_shapecast",
+            to=TensorProto.INT64,
+        ))
+        step5_nodes.append(helper.make_node(
+            "Reshape",
+            inputs=[n.input[0], cast_name],
+            outputs=list(n.output),
+            name=n.name,
+        ))
+        converted_int64.add(int64_name)
+        n_reshape_fixed += 1
+        print(f"  Reshape shape→f32+Cast: {n.name.split('/')[-1]}  {int_vals}")
+
+    new_inits = [i for i in new_inits if i.name not in converted_int64]
+    final_nodes = step5_nodes
+    print(f"  Reshape INT64 initializer 제거: {n_reshape_fixed}개")
+
     # ── 그래프 재구성 ─────────────────────────────────────────────────────────
     del graph.node[:]
     graph.node.extend(final_nodes)
