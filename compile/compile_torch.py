@@ -6,10 +6,10 @@ Runs inside the Mobilint qbcompiler Docker container.
 ONNX 변환 없이 timm / 원본 PyTorch 모델을 직접 컴파일.
 
 CPU_OFFLOAD 플래그:
-  True  → cpu_offload=True: 캘리브레이션 포워드를 CPU에서 실행
-           NPU가 지원 못 하는 op(INT64, scalar constant 등)도 통과 가능.
+  True  → cpu_offload=True: NPU가 지원하지 않는 op를 NPU 추론 시 CPU에서 실행.
+           컴파일러가 미지원 op를 CPU 실행으로 마킹하여 .mxq에 포함시킴.
            출력 파일명: *_cpuoffload.mxq
-  False → 기본 동작 (이전과 동일)
+  False → 기본 동작 (전체 NPU 실행)
            출력 파일명: *.mxq
 
 사전 요건 (Docker 안에서):
@@ -51,7 +51,8 @@ PT_DIR  = os.path.join(ASSETS_DIR, "torch")
 os.makedirs(MXQ_DIR, exist_ok=True)
 
 # ── 모드 설정 ─────────────────────────────────────────────────────────────────
-# cpu_offload=True: 캘리브레이션을 CPU에서 실행 → INT64/scalar constant 문제 우회
+# cpu_offload=True: NPU가 지원하지 않는 op를 NPU 추론 시 CPU에서 실행
+# 컴파일러가 NPU 미지원 op를 CPU 실행으로 마킹하여 .mxq에 포함시킴
 CPU_OFFLOAD = True
 
 suffix = "_cpuoffload" if CPU_OFFLOAD else ""
