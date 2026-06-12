@@ -16,7 +16,7 @@ original EfficientViT ONNX의 qbcompiler 비호환 노드 수정.
      - 단일 원소 INT64 → range=0 → scale=0 → overflow
      - 속성으로 내장하면 INT64 입력 텐서가 그래프에서 사라짐
 
-  5. Reshape INT64 shape → float32 initializer + Cast(float32→int64)
+  5. Reshape INT64 shape → 노드 속성으로 이동 (opset1-4, Cast 없음)
 
   6. float32 scalar Constant (shape=[]) 처리
      - 단일 원소 → range=0 → overflow
@@ -208,14 +208,15 @@ def fix_model(src_path: str, dst_path: str):
     print(f"  Slice INT64 initializer 제거: {len(slice_params_used)}개 "
           f"(Reshape shape 잔여: {len(new_inits)}개)")
 
-    # ── 5. Reshape INT64 shape → float32 initializer + Cast(float32→int64) ──────
-    # INT64 shape=[4] initializer도 bytes 해석 시 극소 denormal → scale 언더플로 → overflow.
-    # float32 [1.0,3.0,16.0,196.0] 는 range=195 → scale≈0.765 → 정상 양자화.
-    # qbcompiler AoT 컴파일 시 Cast 출력을 상수로 평가 → Reshape 형태에 반영.
+    # ── 5. Reshape INT64 shape → 노드 속성으로 이동 (opset1-4 스타일) ─────────────
+    # INT64 shape 입력 텐서: bytes를 float32로 오해 → tiny denormal → range≈0 → overflow.
+    # Cast(float32→int64) 출력도 동일 문제 (INT64 상수 activation 텐서).
+    # opset1-4 Reshape: shape를 INTS 속성으로 내장 → INT64 텐서가 그래프에서 완전 제거.
+    # (opset을 4로 낮춤: Slice도 attribute 방식이므로 opset1-4 호환)
     int64_lookup = {i.name: numpy_helper.to_array(i) for i in new_inits
                     if numpy_helper.to_array(i).dtype == np.int64}
-    converted_int64 = set()
-    step5_nodes = []
+    removed_int64 = set()
+    step5_nodes   = []
     n_reshape_fixed = 0
 
     for n in final_nodes:
@@ -227,31 +228,20 @@ def fix_model(src_path: str, dst_path: str):
         int64_arr  = int64_lookup[int64_name]
         int_vals   = int64_arr.flatten().astype(int).tolist()
 
-        f32_name  = int64_name + "_f32"
-        cast_name = int64_name + "_cast"
-
-        new_inits.append(numpy_helper.from_array(
-            int64_arr.astype(np.float32), name=f32_name))
-
-        step5_nodes.append(helper.make_node(
-            "Cast",
-            inputs=[f32_name], outputs=[cast_name],
-            name=n.name + "_shapecast",
-            to=TensorProto.INT64,
-        ))
         step5_nodes.append(helper.make_node(
             "Reshape",
-            inputs=[n.input[0], cast_name],
+            inputs=[n.input[0]],          # data 만, shape 텐서 없음
             outputs=list(n.output),
             name=n.name,
+            shape=int_vals,               # INTS 속성으로 내장
         ))
-        converted_int64.add(int64_name)
+        removed_int64.add(int64_name)
         n_reshape_fixed += 1
-        print(f"  Reshape shape→f32+Cast: {n.name.split('/')[-1]}  {int_vals}")
+        print(f"  Reshape→attr: {n.name.split('/')[-1]}  {int_vals}")
 
-    new_inits = [i for i in new_inits if i.name not in converted_int64]
+    new_inits   = [i for i in new_inits if i.name not in removed_int64]
     final_nodes = step5_nodes
-    print(f"  Reshape INT64 initializer 제거: {n_reshape_fixed}개")
+    print(f"  Reshape shape attribute 변환: {n_reshape_fixed}개, INT64 initializer 제거: {len(removed_int64)}개")
 
     # ── 6. float32 scalar Constant (range=0) 처리 ────────────────────────────
     # shape=[] 스칼라: 단일 원소 → min=max → range=0 → scale=0 → overflow.
@@ -332,11 +322,12 @@ def fix_model(src_path: str, dst_path: str):
     for init in new_inits:
         graph.initializer.append(init)
 
-    # Slice가 opset9 속성 방식으로 바뀌었으므로 모델 opset을 9로 낮춤
-    # (opset13 Slice는 속성 방식 미지원 → checker 오류 방지)
+    # Slice + Reshape 모두 attribute 방식 (opset1-4 스타일).
+    # Reshape attribute 방식은 opset1-4에서만 유효 → 4로 낮춤.
+    # Slice attribute 방식은 opset1-9에서 유효 → opset4도 호환.
     for oi in model.opset_import:
         if oi.domain == "":
-            oi.version = 9
+            oi.version = 4
             break
 
     try:
