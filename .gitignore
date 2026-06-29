@@ -1,18 +1,10 @@
-# ONNX 파일은 용량이 크므로 기본 제외 (필요한 것만 !로 포함)
-assets/onnx/*.onnx
-assets/aries_env/
-aries_env/*
+aries_env/
+__pycache__/
 
-# 자동 생성 파일
+# 자동 생성 / 대용량
+assets/calib_hwc/
 assets/calib_chw/
-assets/calib_chw_mh/
 assets/mxq/
-assets/onnx/quant_diag/
-assets/onnx/sampleInout/
-assets/subgraphs/
+assets/bitconfig_saved/
 compile/calib_hwc.txt
 compile/calib_chw.txt
-assets/bitconfig_saved/
-
-# 캐시
-__pycache__/
