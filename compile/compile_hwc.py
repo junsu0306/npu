@@ -9,7 +9,7 @@ assets/onnx/*.onnx 를 자동 스캔해서 assets/mxq/*.mxq 로 컴파일.
 설정:
   - backend="onnx"
   - HWC 캘리브레이션 (calib_hwc/, shape: [224, 224, 3])
-  - qbcompiler 기본값: HWC 입력
+  - inference_scheme: "single" | "multi" | "global" | "global4" | "global8"
 
 디렉토리 구조:
   compile/compile_hwc.py   ← this file
@@ -24,6 +24,10 @@ assets/onnx/*.onnx 를 자동 스캔해서 assets/mxq/*.mxq 로 컴파일.
 import glob
 import os
 from qbcompiler import mxq_compile
+
+# ── 컴파일 설정 ────────────────────────────────────────────────────────────────
+# "single" | "multi" | "global" | "global4" | "global8"
+INFERENCE_SCHEME = "global8"
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
@@ -52,8 +56,8 @@ print(f"Found {len(onnx_files)} ONNX model(s) in {ONNX_DIR}")
 
 # ── 컴파일 ───────────────────────────────────────────────────────────────────
 for onnx_path in onnx_files:
-    stem    = os.path.splitext(os.path.basename(onnx_path))[0]
-    mxq_path = os.path.join(MXQ_DIR, stem + ".mxq")
+    stem     = os.path.splitext(os.path.basename(onnx_path))[0]
+    mxq_path = os.path.join(MXQ_DIR, f"{stem}_{INFERENCE_SCHEME}.mxq")
 
     if os.path.exists(mxq_path):
         print(f"\n[SKIP] 이미 존재: {os.path.basename(mxq_path)}")
@@ -62,6 +66,7 @@ for onnx_path in onnx_files:
     print(f"\n{'='*60}")
     print(f"Compiling: {os.path.basename(onnx_path)}")
     print(f"  output : {mxq_path}")
+    print(f"  scheme : {INFERENCE_SCHEME}")
     print(f"{'='*60}")
 
     mxq_compile(
@@ -69,6 +74,7 @@ for onnx_path in onnx_files:
         calib_data_path=CALIB_TXT,
         save_path=mxq_path,
         backend="onnx",
+        inference_scheme=INFERENCE_SCHEME,
         quantization_method=0,   # WChALayer: per-channel weight, per-layer activation
         quantization_mode=2,     # histogram
         hist_search_type=2,      # kl-divergence

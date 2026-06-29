@@ -6,12 +6,6 @@ latency / FPS 측정 + Top-5 예측 출력.
 실행:
   python3 run_npu.py --mxq assets/mxq/vit_tiny_prune50_global\ _reduced.mxq --image val_example.JPEG
   python3 run_npu.py --mxq assets/mxq/vit_tiny_prune50_global\ _reduced.mxq --runs 50 --warmups 5
-
-core-mode 옵션:
-  single   : Cluster0-Core0 단일 코어
-  multi    : Cluster0 내 Core0+Core1 (2코어)
-  global4  : 전체 4코어
-  global8  : 전체 8코어 (기본값)
 """
 
 import argparse
@@ -53,29 +47,21 @@ def build_config(core_mode: str) -> qbruntime.ModelConfig:
         config.set_single_core_mode(core_ids=[
             qbruntime.CoreId(C.Cluster0, Co.Core0),
         ])
-    elif core_mode == "multi":
-        config.set_single_core_mode(core_ids=[
-            qbruntime.CoreId(C.Cluster0, Co.Core0),
-            qbruntime.CoreId(C.Cluster0, Co.Core1),
-        ])
-    elif core_mode == "global4":
-        config.set_single_core_mode(core_ids=[
-            qbruntime.CoreId(C.Cluster0, Co.Core0),
-            qbruntime.CoreId(C.Cluster0, Co.Core1),
-            qbruntime.CoreId(C.Cluster1, Co.Core0),
-            qbruntime.CoreId(C.Cluster1, Co.Core1),
-        ])
-    elif core_mode == "global8":
-        config.set_single_core_mode(core_ids=[
-            qbruntime.CoreId(C.Cluster0, Co.Core0),
-            qbruntime.CoreId(C.Cluster0, Co.Core1),
-            qbruntime.CoreId(C.Cluster0, Co.Core2),
-            qbruntime.CoreId(C.Cluster0, Co.Core3),
-            qbruntime.CoreId(C.Cluster1, Co.Core0),
-            qbruntime.CoreId(C.Cluster1, Co.Core1),
-            qbruntime.CoreId(C.Cluster1, Co.Core2),
-            qbruntime.CoreId(C.Cluster1, Co.Core3),
-        ])
+    elif core_mode in ("multi", "global", "global4", "global8"):
+        # global 모드: 가용 코어 수에 맞게 CoreId 목록 전달
+        core_map = {
+            "multi":   [(C.Cluster0, Co.Core0), (C.Cluster0, Co.Core1)],
+            "global":  [(C.Cluster0, Co.Core0), (C.Cluster0, Co.Core1),
+                        (C.Cluster1, Co.Core0), (C.Cluster1, Co.Core1)],
+            "global4": [(C.Cluster0, Co.Core0), (C.Cluster0, Co.Core1),
+                        (C.Cluster1, Co.Core0), (C.Cluster1, Co.Core1)],
+            "global8": [(C.Cluster0, Co.Core0), (C.Cluster0, Co.Core1),
+                        (C.Cluster0, Co.Core2), (C.Cluster0, Co.Core3),
+                        (C.Cluster1, Co.Core0), (C.Cluster1, Co.Core1),
+                        (C.Cluster1, Co.Core2), (C.Cluster1, Co.Core3)],
+        }
+        ids = [qbruntime.CoreId(cl, co) for cl, co in core_map[core_mode]]
+        config.set_single_core_mode(core_ids=ids)
     else:
         raise ValueError(f"알 수 없는 core-mode: {core_mode}")
 
@@ -95,7 +81,8 @@ def main():
     parser.add_argument("--image",      default="val_example.JPEG", help="추론할 이미지")
     parser.add_argument("--labels",     default="imagenet_classes.txt")
     parser.add_argument("--core-mode",  default="global8",
-                        choices=["single", "multi", "global4", "global8"])
+                        choices=["single", "multi", "global", "global4", "global8"],
+                        help="NPU 코어 모드 (컴파일된 inference_scheme과 일치해야 함)")
     parser.add_argument("--runs",       type=int, default=20,  help="측정 반복 횟수")
     parser.add_argument("--warmups",    type=int, default=5,   help="워밍업 횟수")
     parser.add_argument("--no-save",    action="store_true",   help="결과 저장 안 함")
