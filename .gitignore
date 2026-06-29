@@ -4,7 +4,7 @@ __pycache__/
 # 자동 생성 / 대용량
 assets/calib_hwc/
 assets/calib_chw/
-assets/mxq/
+
 assets/bitconfig_saved/
 compile/calib_hwc.txt
 compile/calib_chw.txt
