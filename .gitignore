@@ -1,25 +1,18 @@
-# ONNX 파일은 로컬에서만 작업 (용량 큼)
-#assets/onnx/*.onnx
-!assets/onnx/efficientvit_b0_original_r224_nchw.onnx
-!assets/onnx/efficientvit_b1_original_r224_nchw.onnx
+# ONNX 파일은 용량이 크므로 기본 제외 (필요한 것만 !로 포함)
+assets/onnx/*.onnx
+assets/aries_env/
 aries_env/*
 
-# Docker 작업 파일
+# 자동 생성 파일
 assets/calib_chw/
 assets/calib_chw_mh/
-assets/compile_efficientvit_chw.py
-assets/compile_efficientvit_cpuoffload_nchw.py
-assets/make_chw.py
-#assets/mxq/
-assets/onnx/efficientvit_b0_original_r224_nchw_prep.onnx
-assets/onnx/efficientvit_b1_r224_timm_nchw_sim.onnx
+assets/mxq/
 assets/onnx/quant_diag/
 assets/onnx/sampleInout/
 assets/subgraphs/
-compile_b1_timm_base.py
-compile_b1_timm_sws.py
-compile_efficientvit_base_vitpreset.py
-compile_efficientvit_sim.py
+compile/calib_hwc.txt
+compile/calib_chw.txt
+assets/bitconfig_saved/
 
-
-
+# 캐시
+__pycache__/
