@@ -29,6 +29,9 @@ from qbcompiler import mxq_compile
 # "single" | "multi" | "global" | "global4" | "global8"
 INFERENCE_SCHEME = "global8"
 
+# 파일명에 이 문자열이 포함된 .onnx 만 컴파일. None 이면 전체 스캔.
+FILE_FILTER = "_npusafe"
+
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
 
@@ -49,10 +52,12 @@ MXQ_DIR  = os.path.join(ASSETS_DIR, "mxq")
 os.makedirs(MXQ_DIR, exist_ok=True)
 
 onnx_files = sorted(glob.glob(os.path.join(ONNX_DIR, "*.onnx")))
+if FILE_FILTER:
+    onnx_files = [f for f in onnx_files if FILE_FILTER in os.path.basename(f)]
 if not onnx_files:
-    raise FileNotFoundError(f"No .onnx files found in {ONNX_DIR}")
+    raise FileNotFoundError(f"No .onnx files matching '{FILE_FILTER}' found in {ONNX_DIR}")
 
-print(f"Found {len(onnx_files)} ONNX model(s) in {ONNX_DIR}")
+print(f"Found {len(onnx_files)} ONNX model(s) (filter='{FILE_FILTER}')")
 
 # ── 컴파일 ───────────────────────────────────────────────────────────────────
 for onnx_path in onnx_files:
