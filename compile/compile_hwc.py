@@ -80,6 +80,7 @@ for onnx_path in onnx_files:
         save_path=mxq_path,
         backend="onnx",
         inference_scheme=INFERENCE_SCHEME,
+        cpu_offload=True,        # dynamic Gather(token selection) → CPU, 나머지 → NPU
         quantization_method=0,   # WChALayer: per-channel weight, per-layer activation
         quantization_mode=2,     # histogram
         hist_search_type=2,      # kl-divergence
