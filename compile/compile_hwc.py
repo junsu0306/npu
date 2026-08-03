@@ -32,6 +32,23 @@ INFERENCE_SCHEME = "global8"
 # 파일명에 이 문자열이 포함된 .onnx 만 컴파일. None 이면 전체 스캔.
 FILE_FILTER = "_npusafe"
 
+# 미지원 op(dynamic gather 등)을 CPU 서브그래프로 분리
+CPU_OFFLOAD = True
+
+# qbcompiler 프리셋. None 이면 아래 MANUAL_QUANT_ARGS 사용.
+#   "vision_transformer" → calibration(method=1, mode=0) + transformer 활성값 16bit
+#   "classification"     → calibration(mode=1, output=0)
+CONFIG_PRESET = "vision_transformer"
+
+# CONFIG_PRESET=None 일 때만 적용. 프리셋보다 우선순위가 높아서
+# 프리셋과 같이 넘기면 프리셋 값을 덮어써 버린다.
+MANUAL_QUANT_ARGS = {
+    "quantization_method": 0,   # WChALayer: per-channel weight, per-layer activation
+    "quantization_mode":   2,   # histogram
+    "hist_search_type":    2,   # kl-divergence
+    "quantization_output": 0,   # Layer: per-layer output quantization
+}
+
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
 
@@ -60,9 +77,17 @@ if not onnx_files:
 print(f"Found {len(onnx_files)} ONNX model(s) (filter='{FILE_FILTER}')")
 
 # ── 컴파일 ───────────────────────────────────────────────────────────────────
+# 프리셋 사용 시 quantization_* kwargs 를 넘기지 않는다 (우선순위가 더 높아 프리셋을 덮어씀).
+if CONFIG_PRESET:
+    quant_args = {"config_preset": CONFIG_PRESET}
+    tag        = f"_{CONFIG_PRESET.replace('vision_transformer', 'vt')}"
+else:
+    quant_args = dict(MANUAL_QUANT_ARGS)
+    tag        = ""
+
 for onnx_path in onnx_files:
     stem     = os.path.splitext(os.path.basename(onnx_path))[0]
-    mxq_path = os.path.join(MXQ_DIR, f"{stem}_{INFERENCE_SCHEME}.mxq")
+    mxq_path = os.path.join(MXQ_DIR, f"{stem}{tag}_{INFERENCE_SCHEME}.mxq")
 
     if os.path.exists(mxq_path):
         print(f"\n[SKIP] 이미 존재: {os.path.basename(mxq_path)}")
@@ -70,8 +95,10 @@ for onnx_path in onnx_files:
 
     print(f"\n{'='*60}")
     print(f"Compiling: {os.path.basename(onnx_path)}")
-    print(f"  output : {mxq_path}")
-    print(f"  scheme : {INFERENCE_SCHEME}")
+    print(f"  output      : {mxq_path}")
+    print(f"  scheme      : {INFERENCE_SCHEME}")
+    print(f"  cpu_offload : {CPU_OFFLOAD}")
+    print(f"  quant       : {CONFIG_PRESET or MANUAL_QUANT_ARGS}")
     print(f"{'='*60}")
 
     mxq_compile(
@@ -80,11 +107,8 @@ for onnx_path in onnx_files:
         save_path=mxq_path,
         backend="onnx",
         inference_scheme=INFERENCE_SCHEME,
-        cpu_offload=True,        # dynamic Gather(token selection) → CPU, 나머지 → NPU
-        quantization_method=0,   # WChALayer: per-channel weight, per-layer activation
-        quantization_mode=2,     # histogram
-        hist_search_type=2,      # kl-divergence
-        quantization_output=0,   # Layer: per-layer output quantization
+        cpu_offload=CPU_OFFLOAD,
+        **quant_args,
     )
 
     print(f"Saved: {mxq_path}")
