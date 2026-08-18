@@ -209,7 +209,7 @@ calibration 전처리와 runtime 전처리가 동일해야 한다.
 이 ViT-Tiny용 calibration을 별도 디렉터리에 생성한다.
 
 ```bash
-python3 compile/gen_calib_hwc.py \
+python3 compile/calibration/generate_hwc.py \
   --profile timm \
   --src-dir assets/calibration_data \
   --output-dir assets/calib_hwc_timm \
@@ -244,7 +244,7 @@ PY
 
 기대 shape/dtype은 `(224, 224, 3) / float32`이고 값 범위는 대략 `[-1, 1]`이다.
 
-`compile/gen_calib_hwc.py`의 기본 프로필은 현재 모델에 맞는 `timm`이다.
+`compile/calibration/generate_hwc.py`의 기본 프로필은 현재 모델에 맞는 `timm`이다.
 과거 결과를 재현할 때만 `--profile legacy`를 명시한다. 실험 기록을 명확히
 남기기 위해 권장 명령에서는 `--profile timm`을 생략하지 않는다.
 
@@ -267,7 +267,7 @@ cd /workspace/npu
 NPU_CALIB_DIR=/workspace/npu/assets/calib_hwc_timm \
 NPU_ONNX_FILTER=tiny30__baseline__nhwc_b1_npusafe \
 NPU_INFERENCE_SCHEME=global8 \
-python3 compile/compile_hwc.py
+python3 compile/mxq/compile_hwc.py
 ```
 
 다른 모델은 filter만 변경한다.
@@ -276,7 +276,7 @@ python3 compile/compile_hwc.py
 NPU_CALIB_DIR=/workspace/npu/assets/calib_hwc_timm \
 NPU_ONNX_FILTER=tiny30__reduced__nhwc_b1_npusafe \
 NPU_INFERENCE_SCHEME=global8 \
-python3 compile/compile_hwc.py
+python3 compile/mxq/compile_hwc.py
 ```
 
 컴파일 설정은 현재 다음과 같다.
@@ -509,7 +509,10 @@ AugReg ViT에서는 `--preprocess timm`이어야 한다. calibration도 timm pro
 ### 증상: patch_slimming만 낮음
 
 현재 올바른 timm 전처리에서도 5,000장 Top-1이 9.14%다. 전처리 문제로 설명되지
-않는다. 다음 순서로 확인한다.
+않는다. 현재 진단 결과와 별도 컴파일 서버에서 수행할 selection
+initializer/Gather 비교 실험은
+[Patch Slimming ONNX→MXQ 정확도 저하 진단](patch_slimming_mxq_diagnosis_ko.md)에
+정리되어 있다. 다음 순서로 확인한다.
 
 1. patch_slimming ONNX CPU Top-1/Top-5
 2. PyTorch checkpoint와 ONNX의 동일 이미지 logits 비교

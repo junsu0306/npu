@@ -1,78 +1,69 @@
 {
   "seed": 20260818,
-  "input": "/workspace/etri_iitp/JS/npu/assets/diagnostics/patch_slimming/diagnostic_input_hwc.npy",
+  "input": "assets/diagnostics/patch_slimming/input/diagnostic_input_hwc.npy",
   "models": [
     {
       "name": "diag_ps_01_control_stem_head",
-      "onnx": "/workspace/etri_iitp/JS/npu/assets/onnx/diag_ps_01_control_stem_head.onnx",
-      "output_shape": [
-        1,
-        64
-      ]
+      "onnx": "assets/diagnostics/patch_slimming/onnx/diag_ps_01_control_stem_head.onnx",
+      "mxq": "assets/diagnostics/patch_slimming/mxq/diag_ps_01_control_stem_head_vt_global8.mxq",
+      "torch_reference": "assets/diagnostics/patch_slimming/reference/diag_ps_01_control_stem_head__torch_output.npy",
+      "output_shape": [1, 64]
     },
     {
       "name": "diag_ps_02_select_contiguous",
-      "onnx": "/workspace/etri_iitp/JS/npu/assets/onnx/diag_ps_02_select_contiguous.onnx",
-      "output_shape": [
-        1,
-        64
-      ]
+      "onnx": "assets/diagnostics/patch_slimming/onnx/diag_ps_02_select_contiguous.onnx",
+      "mxq": "assets/diagnostics/patch_slimming/mxq/diag_ps_02_select_contiguous_vt_global8.mxq",
+      "torch_reference": "assets/diagnostics/patch_slimming/reference/diag_ps_02_select_contiguous__torch_output.npy",
+      "output_shape": [1, 64]
     },
     {
       "name": "diag_ps_03_select_scattered",
-      "onnx": "/workspace/etri_iitp/JS/npu/assets/onnx/diag_ps_03_select_scattered.onnx",
-      "output_shape": [
-        1,
-        64
-      ]
+      "onnx": "assets/diagnostics/patch_slimming/onnx/diag_ps_03_select_scattered.onnx",
+      "mxq": "assets/diagnostics/patch_slimming/mxq/diag_ps_03_select_scattered_vt_global8.mxq",
+      "torch_reference": "assets/diagnostics/patch_slimming/reference/diag_ps_03_select_scattered__torch_output.npy",
+      "output_shape": [1, 64]
     },
     {
       "name": "diag_ps_04_attention_square",
-      "onnx": "/workspace/etri_iitp/JS/npu/assets/onnx/diag_ps_04_attention_square.onnx",
-      "output_shape": [
-        1,
-        64
-      ]
+      "onnx": "assets/diagnostics/patch_slimming/onnx/diag_ps_04_attention_square.onnx",
+      "mxq": "assets/diagnostics/patch_slimming/mxq/diag_ps_04_attention_square_vt_global8.mxq",
+      "torch_reference": "assets/diagnostics/patch_slimming/reference/diag_ps_04_attention_square__torch_output.npy",
+      "output_shape": [1, 64]
     },
     {
       "name": "diag_ps_05_attention_rect",
-      "onnx": "/workspace/etri_iitp/JS/npu/assets/onnx/diag_ps_05_attention_rect.onnx",
-      "output_shape": [
-        1,
-        64
-      ]
+      "onnx": "assets/diagnostics/patch_slimming/onnx/diag_ps_05_attention_rect.onnx",
+      "mxq": "assets/diagnostics/patch_slimming/mxq/diag_ps_05_attention_rect_vt_global8.mxq",
+      "torch_reference": "assets/diagnostics/patch_slimming/reference/diag_ps_05_attention_rect__torch_output.npy",
+      "output_shape": [1, 64]
     },
     {
       "name": "diag_ps_06_block_rect_residual_mlp",
-      "onnx": "/workspace/etri_iitp/JS/npu/assets/onnx/diag_ps_06_block_rect_residual_mlp.onnx",
-      "output_shape": [
-        1,
-        64
-      ]
+      "onnx": "assets/diagnostics/patch_slimming/onnx/diag_ps_06_block_rect_residual_mlp.onnx",
+      "mxq": "assets/diagnostics/patch_slimming/mxq/diag_ps_06_block_rect_residual_mlp_vt_global8.mxq",
+      "torch_reference": "assets/diagnostics/patch_slimming/reference/diag_ps_06_block_rect_residual_mlp__torch_output.npy",
+      "output_shape": [1, 64]
     },
     {
       "name": "diag_ps_07_stack3",
-      "onnx": "/workspace/etri_iitp/JS/npu/assets/onnx/diag_ps_07_stack3.onnx",
-      "output_shape": [
-        1,
-        64
-      ]
+      "onnx": "assets/diagnostics/patch_slimming/onnx/diag_ps_07_stack3.onnx",
+      "mxq": "assets/diagnostics/patch_slimming/mxq/diag_ps_07_stack3_vt_global8.mxq",
+      "torch_reference": "assets/diagnostics/patch_slimming/reference/diag_ps_07_stack3__torch_output.npy",
+      "output_shape": [1, 64]
     },
     {
       "name": "diag_ps_08_stack6",
-      "onnx": "/workspace/etri_iitp/JS/npu/assets/onnx/diag_ps_08_stack6.onnx",
-      "output_shape": [
-        1,
-        64
-      ]
+      "onnx": "assets/diagnostics/patch_slimming/onnx/diag_ps_08_stack6.onnx",
+      "mxq": "assets/diagnostics/patch_slimming/mxq/diag_ps_08_stack6_vt_global8.mxq",
+      "torch_reference": "assets/diagnostics/patch_slimming/reference/diag_ps_08_stack6__torch_output.npy",
+      "output_shape": [1, 64]
     },
     {
       "name": "diag_ps_09_stack12",
-      "onnx": "/workspace/etri_iitp/JS/npu/assets/onnx/diag_ps_09_stack12.onnx",
-      "output_shape": [
-        1,
-        64
-      ]
+      "onnx": "assets/diagnostics/patch_slimming/onnx/diag_ps_09_stack12.onnx",
+      "mxq": "assets/diagnostics/patch_slimming/mxq/diag_ps_09_stack12_vt_global8.mxq",
+      "torch_reference": "assets/diagnostics/patch_slimming/reference/diag_ps_09_stack12__torch_output.npy",
+      "output_shape": [1, 64]
     }
   ]
 }

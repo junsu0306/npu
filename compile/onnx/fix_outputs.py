@@ -6,8 +6,8 @@ token pruning 모델은 export 시 TopK 중간 출력이 graph output으로 노�
 qbcompiler quantizer가 출력 1개만 지원하므로 컴파일 전에 제거해야 함.
 
 사용:
-  python3 compile/fix_onnx_outputs.py assets/onnx/vit_tiny_c30_token70_npusafe.onnx
-  python3 compile/fix_onnx_outputs.py assets/onnx/  # 디렉토리 일괄 처리
+  python3 compile/onnx/fix_outputs.py assets/onnx/vit_tiny_c30_token70_npusafe.onnx
+  python3 compile/onnx/fix_outputs.py assets/onnx/  # 디렉토리 일괄 처리
 """
 
 import argparse

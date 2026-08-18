@@ -7,7 +7,7 @@ EfficientViT 예측이 계속 틀리는 원인이 pipeline 문제인지
 
 Inside container:
   pip install timm
-  python3 /home/airlab_compression/npu/compile/compile_resnet50.py
+  python3 /home/airlab_compression/npu/compile/mxq/compile_resnet50.py
 """
 
 import glob
@@ -17,7 +17,8 @@ import timm
 from qbcompiler import mxq_compile
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
+NPU_ROOT   = os.path.normpath(os.path.join(BASE_DIR, "..", ".."))
+ASSETS_DIR = os.path.join(NPU_ROOT, "assets")
 
 CALIB_HWC_DIR = os.path.join(ASSETS_DIR, "calib_hwc")
 hwc_files = sorted(glob.glob(os.path.join(CALIB_HWC_DIR, "*.npy")))[:200]

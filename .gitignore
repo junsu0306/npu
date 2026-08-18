@@ -13,8 +13,8 @@ assets/calib_hwc*/
 assets/calib_chw*/
 
 assets/bitconfig_saved/
-compile/calib_hwc.txt
-compile/calib_chw.txt
+compile/**/calib_hwc.txt
+compile/**/calib_chw.txt
 
 # NPU benchmark outputs
 results/

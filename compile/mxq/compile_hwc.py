@@ -3,7 +3,8 @@
 ONNX → MXQ 범용 컴파일 스크립트.
 Mobilint qbcompiler Docker 컨테이너 안에서 실행.
 
-assets/onnx/*.onnx 를 자동 스캔해서 assets/mxq/*.mxq 로 컴파일.
+기본적으로 assets/onnx/*.onnx 를 스캔해서 assets/mxq/*.mxq 로 컴파일.
+NPU_ONNX_DIR/NPU_MXQ_DIR 환경변수로 진단·실험 폴더를 별도로 지정할 수 있음.
 이미 .mxq 가 존재하는 모델은 건너뜀 (재컴파일하려면 해당 .mxq 삭제).
 
 설정:
@@ -12,13 +13,13 @@ assets/onnx/*.onnx 를 자동 스캔해서 assets/mxq/*.mxq 로 컴파일.
   - inference_scheme: "single" | "multi" | "global" | "global4" | "global8"
 
 디렉토리 구조:
-  compile/compile_hwc.py   ← this file
-  assets/calib_hwc/        ← HWC 캘리브레이션 텐서 (gen_calib_hwc.py 로 생성)
+  compile/mxq/compile_hwc.py   ← this file
+  assets/calib_hwc/        ← HWC calibration tensor (compile/calibration/generate_hwc.py)
   assets/onnx/*.onnx       ← 입력 모델
   assets/mxq/*.mxq         ← 출력 컴파일 모델
 
 실행:
-  python3 /workspace/npu/compile/compile_hwc.py
+  python3 /workspace/npu/compile/mxq/compile_hwc.py
 """
 
 import glob
@@ -51,7 +52,8 @@ MANUAL_QUANT_ARGS = {
 }
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
+NPU_ROOT   = os.path.normpath(os.path.join(BASE_DIR, "..", ".."))
+ASSETS_DIR = os.path.join(NPU_ROOT, "assets")
 
 # ── 캘리브레이션 파일 목록 ──────────────────────────────────────────────────────
 CALIB_HWC_DIR = os.environ.get(
@@ -79,8 +81,12 @@ with open(CALIB_TXT, "w") as f:
 print(f"Calibration list: {len(hwc_files)} HWC files -> {CALIB_TXT}")
 
 # ── ONNX 파일 자동 스캔 ────────────────────────────────────────────────────────
-ONNX_DIR = os.path.join(ASSETS_DIR, "onnx")
-MXQ_DIR  = os.path.join(ASSETS_DIR, "mxq")
+ONNX_DIR = os.path.abspath(
+    os.environ.get("NPU_ONNX_DIR", os.path.join(ASSETS_DIR, "onnx"))
+)
+MXQ_DIR = os.path.abspath(
+    os.environ.get("NPU_MXQ_DIR", os.path.join(ASSETS_DIR, "mxq"))
+)
 os.makedirs(MXQ_DIR, exist_ok=True)
 
 onnx_files = sorted(glob.glob(os.path.join(ONNX_DIR, "*.onnx")))

@@ -12,7 +12,7 @@ from qbcompiler import mxq_compile
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-NPU_ROOT = os.path.normpath(os.path.join(HERE, ".."))
+NPU_ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 DEFAULT_ONNX = os.path.join(
     NPU_ROOT, "assets", "onnx", "tiny30__paper__rel002_npusafe.onnx"
 )

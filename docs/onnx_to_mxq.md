@@ -16,10 +16,10 @@ Mobilint **qbcompiler v1.1.0**으로 ONNX 모델을 Aries2 NPU에서 실행 가�
 ```
 ImageNet 이미지
     │
-    ▼  [LOCAL] gen_calib_hwc.py
+    ▼  [LOCAL] compile/calibration/generate_hwc.py
 HWC .npy 텐서 (assets/calib_hwc/)
     │
-    ▼  [DOCKER] compile_hwc.py
+    ▼  [DOCKER] compile/mxq/compile_hwc.py
 MXQ 파일 (assets/mxq/)
     │
     ▼  [NPU] benchmark/runtime/run_npu.py
@@ -27,8 +27,8 @@ MXQ 파일 (assets/mxq/)
 ```
 
 > **환경 구분**
-> - 캘리브레이션 데이터 생성(`gen_calib_hwc.py`) → **로컬 (Jetson Orin)**
-> - MXQ 컴파일(`compile_hwc.py`) → **qbcompiler Docker 컨테이너 내부**
+> - 캘리브레이션 데이터 생성(`compile/calibration/generate_hwc.py`) → **로컬 (Jetson Orin)**
+> - MXQ 컴파일(`compile/mxq/compile_hwc.py`) → **qbcompiler Docker 컨테이너 내부**
 > - NPU 추론(`benchmark/runtime/run_npu.py`) → **드라이버 설치된 Jetson Orin**
 
 ---
@@ -47,10 +47,14 @@ npu/
 │   └── qbcompiler-1.1.0+aries2-py3-none-any.whl
 │
 ├── compile/
-│   ├── gen_calib_hwc.py        # Step 2: 로컬에서 실행
-│   ├── compile_hwc.py          # Step 3: Docker 안에서 실행
-│   ├── calib_hwc.txt           # 자동 생성 파일 목록 (git 제외)
-│   └── compile_resnet50.py     # ResNet50 sanity-check용
+│   ├── calibration/
+│   │   └── generate_hwc.py     # Step 2: 로컬에서 실행
+│   ├── onnx/
+│   │   └── fix_outputs.py      # ONNX 출력 정리
+│   └── mxq/
+│       ├── compile_hwc.py      # Step 3: Docker 안에서 실행
+│       ├── calib_hwc.txt       # 자동 생성 파일 목록 (git 제외)
+│       └── compile_resnet50.py # ResNet50 sanity-check용
 │
 ├── benchmark/
 │   ├── runtime/run_npu.py      # Step 4: direct qbruntime 추론
@@ -66,7 +70,9 @@ npu/
 
 ## Step 1 — ONNX 모델 준비
 
-변환할 ONNX 파일을 `assets/onnx/`에 배치합니다. `compile_hwc.py`가 이 디렉토리를 자동 스캔하므로 추가 설정이 필요 없습니다.
+변환할 production ONNX 파일을 `assets/onnx/`에 배치합니다.
+`compile/mxq/compile_hwc.py`가 기본적으로 이 디렉터리를 스캔한다. 진단·실험 모델은
+`NPU_ONNX_DIR`과 `NPU_MXQ_DIR`을 지정해 production 파일과 분리한다.
 
 컴파일 전에 ONNX Runtime으로 모델 출력을 검증합니다 (입력 포맷: NCHW):
 
@@ -80,12 +86,12 @@ python3 benchmark/onnx/infer_onnx.py \
 
 ## Step 2 — 캘리브레이션 데이터 생성 `[LOCAL]`
 
-Post-Training Quantization(PTQ)은 activation 범위 측정을 위한 캘리브레이션 데이터가 필요합니다. `gen_calib_hwc.py`는 ImageNet 이미지를 전처리하여 **HWC float32 텐서**로 저장합니다.
+Post-Training Quantization(PTQ)은 activation 범위 측정을 위한 캘리브레이션 데이터가 필요합니다. `compile/calibration/generate_hwc.py`는 ImageNet 이미지를 전처리하여 **HWC float32 텐서**로 저장합니다.
 
 ```bash
 cd /home/airlab_compression/npu
 source aries_env/bin/activate
-python3 compile/gen_calib_hwc.py
+python3 compile/calibration/generate_hwc.py
 ```
 
 출력 예시:
@@ -136,7 +142,7 @@ docker run -it --rm \
 
 # 컨테이너 내부
 pip install /workspace/npu/assets/qbcompiler-1.1.0+aries2-py3-none-any.whl
-python3 /workspace/npu/compile/compile_hwc.py
+python3 /workspace/npu/compile/mxq/compile_hwc.py
 ```
 
 ### compile_hwc.py 동작
@@ -168,7 +174,7 @@ mxq_compile(
 
 ```bash
 rm "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq"
-python3 /workspace/npu/compile/compile_hwc.py
+python3 /workspace/npu/compile/mxq/compile_hwc.py
 ```
 
 ---
@@ -291,7 +297,12 @@ python3 benchmark/runtime/test_npu.py \
 | **`global8`** | **8** | **전체 8코어, 최고 처리량 (현재 사용)** |
 | `all` | 전체 | 가용 코어 자동 사용 |
 
-`compile_hwc.py` 상단의 `INFERENCE_SCHEME` 변수 한 줄만 수정하면 됩니다.
+`NPU_INFERENCE_SCHEME` 환경변수로 지정한다.
+
+```bash
+NPU_INFERENCE_SCHEME=single python3 compile/mxq/compile_hwc.py
+NPU_INFERENCE_SCHEME=global8 python3 compile/mxq/compile_hwc.py
+```
 
 ---
 
@@ -299,8 +310,8 @@ python3 benchmark/runtime/test_npu.py \
 
 | 스크립트 | 포맷 | Shape |
 |---|---|---|
-| `gen_calib_hwc.py` 출력 | HWC | `(224, 224, 3)` |
-| `compile_hwc.py` 캘리브레이션 입력 | HWC | `(224, 224, 3)` |
+| `compile/calibration/generate_hwc.py` 출력 | HWC | `(224, 224, 3)` |
+| `compile/mxq/compile_hwc.py` 캘리브레이션 입력 | HWC | `(224, 224, 3)` |
 | `benchmark/runtime/run_npu.py` / `test_npu.py` NPU 입력 | HWC | `(224, 224, 3)` |
 | `benchmark/onnx/infer_onnx.py` CPU 검증 입력 | NCHW | `(1, 3, 224, 224)` |
 
@@ -313,12 +324,12 @@ python3 benchmark/runtime/test_npu.py \
 
 # [로컬] 캘리브레이션 데이터 생성
 source aries_env/bin/activate
-python3 compile/gen_calib_hwc.py
+python3 compile/calibration/generate_hwc.py
 
 # [Docker] MXQ 컴파일
 docker run -it --rm -v /home/airlab_compression/npu:/workspace/npu <image> bash
 pip install /workspace/npu/assets/qbcompiler-1.1.0+aries2-py3-none-any.whl
-python3 /workspace/npu/compile/compile_hwc.py
+python3 /workspace/npu/compile/mxq/compile_hwc.py
 
 # [로컬] NPU 추론
 python3 benchmark/runtime/run_npu.py \
@@ -327,9 +338,9 @@ python3 benchmark/runtime/run_npu.py \
 
 # ── inference_scheme 변경 후 재컴파일 ────────────────────────────────
 
-# compile_hwc.py 에서 INFERENCE_SCHEME 수정 후
+# 다른 inference scheme을 환경변수로 지정
 rm "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq"
-python3 /workspace/npu/compile/compile_hwc.py
+NPU_INFERENCE_SCHEME=global8 python3 /workspace/npu/compile/mxq/compile_hwc.py
 
 # ── 정확도 테스트 ────────────────────────────────────────────────────
 

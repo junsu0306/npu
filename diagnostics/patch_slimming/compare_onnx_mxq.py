@@ -36,7 +36,13 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--onnx", required=True)
     p.add_argument("--mxq", required=True)
-    p.add_argument("--input", default=str(NPU_ROOT / "assets/diagnostics/patch_slimming/diagnostic_input_hwc.npy"))
+    p.add_argument(
+        "--input",
+        default=str(
+            NPU_ROOT
+            / "assets/diagnostics/patch_slimming/input/diagnostic_input_hwc.npy"
+        ),
+    )
     p.add_argument("--core-mode", default="global8", choices=["single", "multi", "global", "global4", "global8"])
     p.add_argument("--output", default="")
     a = p.parse_args()

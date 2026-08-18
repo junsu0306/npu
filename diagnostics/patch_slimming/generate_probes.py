@@ -10,9 +10,11 @@ import torch
 from torch import nn
 
 
-ROOT = Path(__file__).resolve().parents[1]
-ONNX_DIR = ROOT / "assets" / "onnx"
-REF_DIR = ROOT / "assets" / "diagnostics" / "patch_slimming"
+ROOT = Path(__file__).resolve().parents[2]
+ARTIFACT_DIR = ROOT / "assets" / "diagnostics" / "patch_slimming"
+ONNX_DIR = ARTIFACT_DIR / "onnx"
+INPUT_DIR = ARTIFACT_DIR / "input"
+REFERENCE_DIR = ARTIFACT_DIR / "reference"
 
 
 def selection_matrix(n_in, ids):
@@ -124,10 +126,12 @@ def main():
     torch.manual_seed(20260818)
     np.random.seed(20260818)
     ONNX_DIR.mkdir(parents=True, exist_ok=True)
-    REF_DIR.mkdir(parents=True, exist_ok=True)
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
     # Fixed normalized NHWC input. qbruntime consumes the unbatched HWC array.
     inp = np.random.uniform(-1.0, 1.0, (224, 224, 3)).astype(np.float32)
-    np.save(REF_DIR / "diagnostic_input_hwc.npy", inp)
+    input_path = INPUT_DIR / "diagnostic_input_hwc.npy"
+    np.save(input_path, inp)
     dummy = torch.from_numpy(inp[None])
 
     specs = [
@@ -141,7 +145,11 @@ def main():
         ("diag_ps_08_stack6", StackDiagnostic(6)),
         ("diag_ps_09_stack12", StackDiagnostic(12)),
     ]
-    manifest = {"seed": 20260818, "input": str(REF_DIR / "diagnostic_input_hwc.npy"), "models": []}
+    manifest = {
+        "seed": 20260818,
+        "input": str(input_path.relative_to(ROOT)),
+        "models": [],
+    }
     for name, model in specs:
         model.eval()
         path = ONNX_DIR / f"{name}.onnx"
@@ -149,12 +157,26 @@ def main():
             ref = model(dummy).cpu().numpy()
         torch.onnx.export(model, dummy, path, opset_version=17, input_names=["input"],
                           output_names=["output"], do_constant_folding=True)
-        np.save(REF_DIR / f"{name}__torch_output.npy", ref)
-        manifest["models"].append({"name": name, "onnx": str(path), "output_shape": list(ref.shape)})
+        reference_path = REFERENCE_DIR / f"{name}__torch_output.npy"
+        np.save(reference_path, ref)
+        manifest["models"].append({
+            "name": name,
+            "onnx": str(path.relative_to(ROOT)),
+            "mxq": str(
+                (
+                    ARTIFACT_DIR
+                    / "mxq"
+                    / f"{name}_vt_global8.mxq"
+                ).relative_to(ROOT)
+            ),
+            "torch_reference": str(reference_path.relative_to(ROOT)),
+            "output_shape": list(ref.shape),
+        })
         print(f"{name}: {path.name}, output={ref.shape}, range=[{ref.min():.5f},{ref.max():.5f}]")
-    with open(REF_DIR / "manifest.json", "w") as f:
+    manifest_path = ARTIFACT_DIR / "manifest.json"
+    with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
-    print(f"manifest: {REF_DIR / 'manifest.json'}")
+    print(f"manifest: {manifest_path}")
 
 
 if __name__ == "__main__":
