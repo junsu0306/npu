@@ -6,9 +6,7 @@ npu/
 │   ├── calibration_data/   원본 calibration 이미지
 │   ├── calib_hwc/          컴파일 입력용 HWC NPY
 │   ├── onnx/               production ONNX
-│   ├── mxq/                production MXQ 및 core ablation
-│   ├── diagnostics/        고정 입력, reference, 진단 ONNX/MXQ
-│   └── experiments/        그래프 수정 ONNX 및 재컴파일 후보
+│   └── mxq/                production MXQ
 ├── compile/
 │   ├── calibration/        calibration tensor 생성
 │   ├── onnx/               컴파일 전 ONNX 정리
@@ -18,8 +16,6 @@ npu/
 │   ├── runtime/            direct qbruntime 실행 예제
 │   ├── ablation/           single/global8 비교 실험
 │   └── onnx/               MXQ 변환 전 ONNX CPU reference
-├── diagnostics/            모델별 재현 생성 및 ONNX↔MXQ 원인 분석
-│   └── patch_slimming/     Patch Slimming 전용 도구
 ├── results/                벤치마크 JSON/CSV/log 출력
 └── docs/                   변환·실행·구현 문서
 ```
@@ -28,10 +24,9 @@ npu/
 
 1. `compile/calibration/generate_hwc.py`: calibration tensor 생성
 2. `compile/mxq/compile_hwc.py`: 일반 ONNX → MXQ 컴파일
-3. `compile/mxq/compile_tiny30_core_ablation.py`: 동일 Tiny30을 single/global8로 각각 컴파일
-4. `benchmark/model_zoo/run_smoke_test.py`: 실제 NPU에서 빠른 동작 검사
-5. `benchmark/model_zoo/run_model_zoo_benchmark.py`: 기존 Orin Model Zoo 경로로 전체 지표 측정
-6. `benchmark/ablation/eval_tiny30_core_ablation.py`: direct runtime으로 코어 모드 정확도 비교
+3. `benchmark/model_zoo/run_smoke_test.py`: 실제 NPU에서 빠른 동작 검사
+4. `benchmark/model_zoo/run_model_zoo_benchmark.py`: 기존 Orin Model Zoo 경로로 전체 지표 측정
+5. `benchmark/ablation/eval_tiny30_core_ablation.py`: direct runtime으로 모델 정확도 비교
 
 메모리 분석이 필요한 경우 `benchmark/model_zoo/run_model_zoo_benchmark.py`에
 `--architecture`를 전달한다. 실제 NPU/process peak와 architecture 기반 activation
@@ -42,8 +37,9 @@ npu/
 새 구현은 모델 하나와 MXQ 하나를 명시적으로 연결하므로, 하나의 local MXQ가 여러
 Model Zoo wrapper에 잘못 적용되는 실수를 방지합니다.
 
-Patch Slimming 진단은 `diagnostics/patch_slimming/`에, 관련 산출물은
-`assets/diagnostics/patch_slimming/`에 모아 production 파일과 분리한다.
+완료된 진단 ONNX/MXQ는 저장소에 장기 보관하지 않는다. Patch Slimming의 최종 export
+규칙은 `docs/patch_slimming_mxq_diagnosis_ko.md`와
+`compile/onnx/remove_identity_selections.py`에 유지한다.
 
 기존 루트의 `run_npu.py`, `test_npu.py`, `infer_onnx.py`, `infer_resnet50.py`도
 `benchmark/runtime`과 `benchmark/onnx`로 이동했습니다. NPU 루트에는 실행 스크립트를
