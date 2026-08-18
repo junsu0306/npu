@@ -278,9 +278,16 @@ python3 diagnostics/patch_slimming/rewrite_selections.py \
 
 ### 6.1 calibration 데이터 생성
 
-현재 `assets/calib_hwc`에는 1,000개 tensor가 있지만
-`preprocess_profile.json`이 없어 생성 당시 profile을 증명할 수 없다. 이번 원인 분리
-실험에서는 새 디렉터리에 `timm` calibration을 생성하는 것을 권장한다.
+현재 저장소와 컴파일 Docker에는 `assets/calib_hwc` 아래에 1,000개의 HWC tensor가
+있다. 각 파일은 `(224, 224, 3)`, `float32` 형식이므로 바로 컴파일에 사용할 수 있다.
+다만 `preprocess_profile.json`이 없어 생성 당시 profile을 증명할 수 없다는 점은
+결과 기록에 남겨야 한다.
+
+기존 calibration으로 바로 실험할 때는 별도 생성 절차 없이 다음 절의
+`NPU_CALIB_DIR="$PWD/assets/calib_hwc"`를 사용한다.
+
+동일한 `timm` 전처리임을 명시적으로 보장한 calibration을 새로 만들려면 다음 명령을
+사용한다.
 
 ```bash
 cd /workspace/npu
@@ -311,12 +318,13 @@ cpu_offload      = True
 순서대로 컴파일된다. 두 후보 모두 Gather op가 없다.
 
 ```bash
-NPU_CALIB_DIR="$PWD/assets/calib_hwc_timm" \
+CUDA_VISIBLE_DEVICES=2 \
+NPU_CALIB_DIR="$PWD/assets/calib_hwc" \
 NPU_ONNX_DIR="$PWD/assets/experiments/patch_slimming/onnx" \
 NPU_MXQ_DIR="$PWD/assets/experiments/patch_slimming/mxq" \
 NPU_INFERENCE_SCHEME=global8 \
 NPU_ONNX_FILTER='__selection_no_identity' \
-python3 compile/mxq/compile_hwc.py 2>&1 | tee compile_selection_supported.log
+python3 compile/mxq/compile_hwc.py 2>&1 | tee compile_selection_supported_gpu2.log
 ```
 
 이미 같은 이름의 MXQ가 있으면 스크립트가 `[SKIP]`하므로, 별도 빈 output 작업
@@ -337,7 +345,8 @@ python3 -c 'import qbcompiler; print(qbcompiler.__version__)'
 sha256sum assets/onnx/tiny30__patch_slimming*.onnx
 sha256sum assets/experiments/patch_slimming/onnx/*.onnx
 sha256sum assets/experiments/patch_slimming/mxq/*.mxq
-cat assets/calib_hwc_timm/preprocess_profile.json
+find assets/calib_hwc -maxdepth 1 -name '*.npy' | wc -l
+test -f assets/calib_hwc/preprocess_profile.json && cat assets/calib_hwc/preprocess_profile.json
 ```
 
 다음도 로그에 남긴다.
