@@ -5,9 +5,14 @@ The exported Patch Slimming graph expresses a fixed token selection as
 
     [N_out, N_in] one-hot matrix @ [B, N_in, D]
 
-twice per block (query and residual).  This script can either move those
-Constant tensors to graph initializers, or replace the operation with an
-equivalent Gather.  Identity selections are removed in Gather mode.
+twice per block (query and residual).  This script supports compiler-diagnostic
+rewrites that preserve the float ONNX result:
+
+* ``initializer``: move Constant selection tensors to graph initializers.
+* ``gather``: replace non-identity selection MatMul with Gather.
+* ``no_identity``: remove only identity selection MatMul operations.
+* ``no_identity_final_slice``: additionally replace the final CLS selection
+  (111 -> 1) with a static Slice.  This mode does not introduce Gather.
 """
 
 import argparse
@@ -16,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-from onnx import TensorProto, checker, helper, numpy_helper, shape_inference
+from onnx import checker, helper, numpy_helper, shape_inference
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -70,22 +75,21 @@ def rewrite(model, mode):
     if not selections:
         raise RuntimeError("No fixed /slim.* one-hot selection MatMul nodes found")
 
-    selected_nodes = {
-        id(node)
-        for constant, matmul, _array, _ids in selections.values()
-        for node in (constant, matmul)
-    }
+    selected_nodes = set()
     replacements = {}
     rewritten_nodes = []
     initializers = list(model.graph.initializer)
     gather_count = 0
+    slice_count = 0
     identity_count = 0
+    initializer_count = 0
 
     if mode == "initializer":
         # Only Constant representation changes. MatMul nodes remain untouched.
         selected_nodes = {id(constant) for constant, _matmul, _array, _ids in selections.values()}
         for constant, _matmul, array, _ids in selections.values():
             initializers.append(numpy_helper.from_array(array, name=constant.output[0]))
+            initializer_count += 1
     else:
         for constant, matmul, array, ids in selections.values():
             n_out, n_in = array.shape
@@ -93,22 +97,49 @@ def rewrite(model, mode):
             output = matmul.output[0]
             is_identity = n_out == n_in and np.array_equal(ids, np.arange(n_in))
             if is_identity:
-                replacements[output] = source
-                identity_count += 1
+                if mode in ("gather", "no_identity", "no_identity_final_slice"):
+                    selected_nodes.update((id(constant), id(matmul)))
+                    replacements[output] = source
+                    identity_count += 1
                 continue
 
-            index_name = f"{constant.output[0]}__indices"
-            initializers.append(numpy_helper.from_array(ids, name=index_name))
-            rewritten_nodes.append(
-                helper.make_node(
-                    "Gather",
-                    inputs=[source, index_name],
-                    outputs=[output],
-                    axis=1,
-                    name=f"{matmul.name}__Gather",
+            if mode == "gather":
+                selected_nodes.update((id(constant), id(matmul)))
+                index_name = f"{constant.output[0]}__indices"
+                initializers.append(numpy_helper.from_array(ids, name=index_name))
+                rewritten_nodes.append(
+                    helper.make_node(
+                        "Gather",
+                        inputs=[source, index_name],
+                        outputs=[output],
+                        axis=1,
+                        name=f"{matmul.name}__Gather",
+                    )
                 )
-            )
-            gather_count += 1
+                gather_count += 1
+                continue
+
+            is_final_cls = n_out == 1 and n_in > 1 and np.array_equal(ids, [0])
+            if mode == "no_identity_final_slice" and is_final_cls:
+                selected_nodes.update((id(constant), id(matmul)))
+                prefix = f"{constant.output[0]}__slice"
+                slice_inputs = [
+                    (f"{prefix}_starts", np.asarray([0], dtype=np.int64)),
+                    (f"{prefix}_ends", np.asarray([1], dtype=np.int64)),
+                    (f"{prefix}_axes", np.asarray([1], dtype=np.int64)),
+                    (f"{prefix}_steps", np.asarray([1], dtype=np.int64)),
+                ]
+                for name, value in slice_inputs:
+                    initializers.append(numpy_helper.from_array(value, name=name))
+                rewritten_nodes.append(
+                    helper.make_node(
+                        "Slice",
+                        inputs=[source] + [name for name, _value in slice_inputs],
+                        outputs=[output],
+                        name=f"{matmul.name}__StaticClsSlice",
+                    )
+                )
+                slice_count += 1
 
     def resolve(name):
         seen = set()
@@ -120,23 +151,23 @@ def rewrite(model, mode):
         return name
 
     new_nodes = []
-    gather_by_output = {node.output[0]: node for node in rewritten_nodes}
-    inserted_gathers = set()
+    rewrite_by_output = {node.output[0]: node for node in rewritten_nodes}
+    inserted_rewrites = set()
     for node in model.graph.node:
         if id(node) in selected_nodes:
-            if mode == "gather" and node.op_type == "MatMul":
-                gather = gather_by_output.get(node.output[0])
-                if gather is not None:
-                    new_nodes.append(gather)
-                    inserted_gathers.add(gather.output[0])
+            if node.op_type == "MatMul":
+                replacement = rewrite_by_output.get(node.output[0])
+                if replacement is not None:
+                    new_nodes.append(replacement)
+                    inserted_rewrites.add(replacement.output[0])
             continue
         for index, name in enumerate(node.input):
             node.input[index] = resolve(name)
         new_nodes.append(node)
 
-    missing = set(gather_by_output) - inserted_gathers
+    missing = set(rewrite_by_output) - inserted_rewrites
     if missing:
-        raise RuntimeError(f"Failed to insert Gather nodes for: {sorted(missing)}")
+        raise RuntimeError(f"Failed to insert replacement nodes for: {sorted(missing)}")
 
     for output in model.graph.output:
         output.name = resolve(output.name)
@@ -147,7 +178,12 @@ def rewrite(model, mode):
 
     return {
         "selection_matmuls": len(selections),
+        "selection_matmuls_preserved": (
+            len(selections) - identity_count - gather_count - slice_count
+        ),
+        "constants_moved_to_initializers": initializer_count,
         "gathers": gather_count,
+        "static_cls_slices": slice_count,
         "identity_matmuls_removed": identity_count,
     }
 
@@ -180,7 +216,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default=str(DEFAULT_INPUT))
     parser.add_argument("--output", required=True)
-    parser.add_argument("--mode", choices=["gather", "initializer"], default="gather")
+    parser.add_argument(
+        "--mode",
+        choices=[
+            "gather",
+            "initializer",
+            "no_identity",
+            "no_identity_final_slice",
+        ],
+        default="no_identity",
+    )
     parser.add_argument("--check-input", default="")
     args = parser.parse_args()
 

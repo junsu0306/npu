@@ -114,11 +114,13 @@ MXQ와 일치하는 대체 토큰은 없었다. 정상 CLS인 0번 토큰이 오
 
 ## 4. 현재 가설과 우선순위
 
-### 가설 A: one-hot Constant MatMul lowering/양자화 문제 — 가장 유력
+### 가설 A: one-hot MatMul lowering/양자화 문제 — 가장 유력
 
-실제 모델의 선택 행렬은 `Constant` node이며 컴파일러에서 convolution 형태로
-변환된다. 고정 선택은 본질적으로 `Gather`이므로 MatMul 양자화가 필요하지 않다.
-24회의 selection MatMul 중 14회는 identity라 계산 자체도 불필요하다.
+`Constant`를 initializer로 옮겨 컴파일해도 기존 MXQ와 출력이 완전히 같았으므로
+Constant 표현 자체는 원인이 아니다. 컴파일러가 두 표현을 같은 내부 그래프로
+정규화하는 것으로 보인다. 반면 selection MatMul은 내부적으로 convolution 형태로
+변환된다. 24회의 selection MatMul 중 14회는 identity라 계산 자체도 불필요하므로,
+이를 제거했을 때 컴파일 결과가 달라지는지 확인해야 한다.
 
 ### 가설 B: `N_out=1` 특수 shape 문제
 
@@ -138,16 +140,18 @@ Patch Slimming 분포를 제대로 포착하지 못했을 수 있다.
 calibration data, preset, CPU offload 설정이 달랐을 가능성을 배제할 수 없다. 별도
 서버에서 원본까지 같은 조건으로 다시 컴파일하면 이 가설을 확인할 수 있다.
 
-## 5. 준비된 등가 ONNX 3종
+## 5. 준비된 등가 ONNX
 
-컴파일 서버에서는 아래 세 모델을 **동일 compiler, calibration, preset, inference
-scheme**으로 컴파일한다.
+모두 기존 정상 Patch Slimming ONNX를 graph rewrite한 모델이며 학습 가중치는 바꾸지
+않았다.
 
 | 구분 | 파일 | 목적 |
 |---|---|---|
 | 원본 control | `assets/onnx/tiny30__patch_slimming__nhwc_b1_npusafe.onnx` | 기존 MXQ artifact/설정 재현 |
-| initializer | `assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_init.onnx` | Constant와 initializer 표현 차이 분리 |
-| gather | `assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_gather.onnx` | selection MatMul lowering 제거 |
+| initializer | `assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_init.onnx` | 실험 완료: 기존 MXQ와 같은 실패 출력 |
+| gather | `assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_gather.onnx` | ONNX 진단 전용: qbcompiler가 변환하지 못함 |
+| no identity | `assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity.onnx` | 현재 컴파일 후보 1 |
+| no identity + final Slice | `assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice.onnx` | 현재 컴파일 후보 2 |
 
 `initializer` 모델은 24개 선택 행렬을 Constant node에서 graph initializer로 옮겼다.
 MatMul은 그대로 유지한다.
@@ -158,7 +162,17 @@ MatMul은 그대로 유지한다.
 - identity selection MatMul 14개를 제거
 - 나머지 attention, residual, MLP, head와 가중치는 변경하지 않음
 
-고정 진단 입력에서 원본과 두 후보의 ONNX Runtime 출력은 모두 완전히 동일했다.
+하지만 qbcompiler가 Gather 모델을 MXQ로 변환하지 못하므로 실제 배포 후보에서는
+제외한다. Patch Slimming은 동적 token pruning의 Gather를 피하고 고정 selection
+MatMul을 사용하기 위해 선택한 구조라는 제약을 유지해야 한다.
+
+`no identity` 모델은 identity selection MatMul 14개만 제거하고 실제 토큰 감소를
+수행하는 MatMul 10개는 그대로 유지한다. `no identity + final Slice`는 여기에 마지막
+CLS 선택 MatMul 2개를 `x[:, 0:1, :]`과 같은 정적 Slice로 바꾸며, 앞쪽 scattered
+selection MatMul 8개는 유지한다. 두 후보 모두 Gather op가 없다.
+
+고정 진단 입력에서 원본과 모든 graph-rewrite 후보의 ONNX Runtime 출력은 완전히
+동일했다.
 
 ```text
 max_abs       = 0.0
@@ -167,25 +181,96 @@ cosine        = 1.0
 argmax_before = argmax_after
 ```
 
+### 5.1 ImageNet 1,000장 ONNX 등가성 평가
+
+고정 입력 한 장뿐 아니라 ImageNet validation 1,000장에서도 후보들을 원본과 비교했다.
+1,000개 클래스에서 클래스별 1장, seed 42로 같은 이미지를 선택했고 `timm` 전처리를
+사용했다.
+
+| ONNX | Top-1 | Top-5 |
+|---|---:|---:|
+| 원본 | 67.30% | 88.30% |
+| selection initializer | 67.30% | 88.30% |
+| selection Gather | 67.30% | 88.30% |
+| selection no identity | 67.30% | 88.30% |
+| selection no identity + final Slice | 67.30% | 88.30% |
+
+모든 후보는 1,000장 모두에서 원본과 Top-1 prediction이 일치했을 뿐 아니라 logits
+배열도 bit-exact로 같았다.
+
+```text
+top1 agreement = 100.00%
+exact logits   = 1000 / 1000
+mean MAE       = 0.0
+relative L2    = 0.0
+max_abs        = 0.0
+```
+
+따라서 현재 컴파일 대상 두 후보는 새로 학습하거나 PyTorch에서 다시 export한 모델이
+아니라, 실제 원본 ONNX와 동일한 float 출력을 내는 graph-rewrite 후보임을
+1,000장으로 확인했다.
+클래스별 1장 결과는 표본에 따른 변동이 있으므로 Top-1 67.30% 자체를 최종 정확도로
+해석하기보다는 그래프의 등가성 검증에 사용한다.
+
+결과 파일:
+
+```text
+results/diagnostics/patch_slimming_onnx_candidates_1000_timm_seed42.json
+results/diagnostics/patch_slimming_supported_rewrites_1000_timm_seed42.json
+```
+
+재현 명령:
+
+```bash
+python3 diagnostics/patch_slimming/evaluate_onnx_candidates.py \
+  --model original:assets/onnx/tiny30__patch_slimming__nhwc_b1_npusafe.onnx \
+  --model no_identity:assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity.onnx \
+  --model no_identity_final_slice:assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice.onnx \
+  --val-dir /media/airlab_compression/nvme_storage/imagenet_val \
+  --classes 1000 \
+  --images-per-class 1 \
+  --seed 42 \
+  --preprocess timm \
+  --output results/diagnostics/patch_slimming_supported_rewrites_1000_timm_seed42.json
+```
+
+### 5.2 initializer MXQ 실험 결과
+
+initializer 후보는 MXQ 컴파일에는 성공했지만 기존 Patch MXQ와 동일한 실패 출력을
+냈다.
+
+```text
+cosine     = 0.3436668952
+relative L2 = 1.2503092592
+MAE         = 1.1390264995
+max_abs     = 4.7834015191
+```
+
+기존 MXQ와 initializer MXQ의 SHA-256은 다르지만 파일 크기는 모두 6,350,989 bytes이고,
+고정 입력 logits와 모든 비교 지표가 동일하다. 따라서 Constant node와 initializer의
+표현 차이는 원인에서 제외한다.
+
 파일 무결성 확인용 SHA-256은 다음과 같다.
 
 ```text
 772d9c0fc973bbfc5f43090b83c537ad5100fb66f74eec574dc75df4becfe3cf  tiny30__patch_slimming__nhwc_b1_npusafe.onnx
 8692811b4f8a4be5d76f674405fd1ae9ffd88caaf51bb2d82df7454a427a4299  tiny30__patch_slimming__nhwc_b1_npusafe__selection_init.onnx
 9ace430037c738b01355543a6cc6f7e5dca72ad189d013bc587abc4a9628a6e0  tiny30__patch_slimming__nhwc_b1_npusafe__selection_gather.onnx
+6bb6de7459f2607be1ce31e426306882eb1bc755e907e065a04b75c7f2654f74  tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity.onnx
+db9088ffc1f76f60f0f5183141242723b8eb76c97d59f683379c312c309c040c  tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice.onnx
 ```
 
-필요하면 다음 명령으로 두 후보를 다시 생성할 수 있다.
+현재 컴파일 대상 두 후보는 다음 명령으로 다시 생성할 수 있다.
 
 ```bash
 python3 diagnostics/patch_slimming/rewrite_selections.py \
-  --mode initializer \
-  --output assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_init.onnx \
+  --mode no_identity \
+  --output assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity.onnx \
   --check-input assets/diagnostics/patch_slimming/input/diagnostic_input_hwc.npy
 
 python3 diagnostics/patch_slimming/rewrite_selections.py \
-  --mode gather \
-  --output assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_gather.onnx \
+  --mode no_identity_final_slice \
+  --output assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice.onnx \
   --check-input assets/diagnostics/patch_slimming/input/diagnostic_input_hwc.npy
 ```
 
@@ -209,9 +294,9 @@ python3 compile/calibration/generate_hwc.py \
 cat assets/calib_hwc_timm/preprocess_profile.json
 ```
 
-세 ONNX 모두 반드시 같은 calibration 디렉터리를 사용한다.
+두 후보 모두 반드시 같은 calibration 디렉터리를 사용한다.
 
-### 6.2 세 모델 컴파일
+### 6.2 지원 연산 후보 두 모델 컴파일
 
 현재 `compile/mxq/compile_hwc.py`의 공통 설정은 다음과 같다.
 
@@ -222,29 +307,16 @@ inference_scheme = global8
 cpu_offload      = True
 ```
 
-각 모델을 개별적으로 컴파일하면 로그가 섞이지 않아 provenance를 남기기 쉽다.
+두 파일명에 공통으로 들어간 `__selection_no_identity` filter를 사용하면 한 번에
+순서대로 컴파일된다. 두 후보 모두 Gather op가 없다.
 
 ```bash
 NPU_CALIB_DIR="$PWD/assets/calib_hwc_timm" \
-NPU_ONNX_DIR="$PWD/assets/onnx" \
-NPU_MXQ_DIR="$PWD/assets/experiments/patch_slimming/mxq" \
-NPU_INFERENCE_SCHEME=global8 \
-NPU_ONNX_FILTER='tiny30__patch_slimming__nhwc_b1_npusafe.onnx' \
-python3 compile/mxq/compile_hwc.py 2>&1 | tee compile_original.log
-
-NPU_CALIB_DIR="$PWD/assets/calib_hwc_timm" \
 NPU_ONNX_DIR="$PWD/assets/experiments/patch_slimming/onnx" \
 NPU_MXQ_DIR="$PWD/assets/experiments/patch_slimming/mxq" \
 NPU_INFERENCE_SCHEME=global8 \
-NPU_ONNX_FILTER='__selection_init.onnx' \
-python3 compile/mxq/compile_hwc.py 2>&1 | tee compile_selection_init.log
-
-NPU_CALIB_DIR="$PWD/assets/calib_hwc_timm" \
-NPU_ONNX_DIR="$PWD/assets/experiments/patch_slimming/onnx" \
-NPU_MXQ_DIR="$PWD/assets/experiments/patch_slimming/mxq" \
-NPU_INFERENCE_SCHEME=global8 \
-NPU_ONNX_FILTER='__selection_gather.onnx' \
-python3 compile/mxq/compile_hwc.py 2>&1 | tee compile_selection_gather.log
+NPU_ONNX_FILTER='__selection_no_identity' \
+python3 compile/mxq/compile_hwc.py 2>&1 | tee compile_selection_supported.log
 ```
 
 이미 같은 이름의 MXQ가 있으면 스크립트가 `[SKIP]`하므로, 별도 빈 output 작업
@@ -254,13 +326,9 @@ python3 compile/mxq/compile_hwc.py 2>&1 | tee compile_selection_gather.log
 예상 출력 파일명은 다음과 같다.
 
 ```text
-assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe_vt_global8.mxq
-assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_init_vt_global8.mxq
-assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_gather_vt_global8.mxq
+assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_vt_global8.mxq
+assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice_vt_global8.mxq
 ```
-
-원본 control은 현재 NPU 서버의 MXQ를 덮어쓰지 말고 `__recompiled` 같은 이름으로
-가져오는 것이 안전하다.
 
 ### 6.3 함께 기록할 정보
 
@@ -287,16 +355,16 @@ MXQ를 가져오면 5,000장 평가 전에 고정 입력 하나로 ONNX와 비�
 
 ```bash
 python3 diagnostics/patch_slimming/compare_onnx_mxq.py \
-  --onnx assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_init.onnx \
-  --mxq assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_init_vt_global8.mxq \
+  --onnx assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity.onnx \
+  --mxq assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_vt_global8.mxq \
   --core-mode global8 \
-  --output results/diagnostics/patch_selection_init.json
+  --output results/diagnostics/patch_selection_no_identity.json
 
 python3 diagnostics/patch_slimming/compare_onnx_mxq.py \
-  --onnx assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_gather.onnx \
-  --mxq assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_gather_vt_global8.mxq \
+  --onnx assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice.onnx \
+  --mxq assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice_vt_global8.mxq \
   --core-mode global8 \
-  --output results/diagnostics/patch_selection_gather.json
+  --output results/diagnostics/patch_selection_no_identity_final_slice.json
 ```
 
 cosine이 기존 `0.343667`보다 크게 개선되는 후보만 5,000장 평가한다. 정상 baseline과
@@ -304,31 +372,30 @@ cosine이 기존 `0.343667`보다 크게 개선되는 후보만 5,000장 평가�
 
 ```bash
 python3 benchmark/ablation/eval_tiny30_core_ablation.py \
-  --model patch_init:global8:assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_init_vt_global8.mxq \
-  --model patch_gather:global8:assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_gather_vt_global8.mxq \
+  --model patch_no_identity:global8:assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_vt_global8.mxq \
+  --model patch_final_slice:global8:assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice_vt_global8.mxq \
   --val-dir /media/airlab_compression/nvme_storage/imagenet_val \
   --classes 1000 \
   --images-per-class 5 \
   --seed 42 \
   --preprocess timm \
-  --output results/patch_slimming_selection_rewrite_5000.json
+  --output results/patch_slimming_supported_rewrites_5000.json
 ```
 
 ## 8. 결과 해석
 
 | 결과 | 해석 |
 |---|---|
-| 재컴파일한 원본부터 정상 | 기존 MXQ가 오래된 artifact이거나 compiler/calibration 설정이 달랐음 |
-| initializer만 정상 | Constant node와 initializer를 compiler가 다르게 처리하는 문제 |
-| gather만 정상 | one-hot selection MatMul lowering 또는 그 activation 양자화가 원인 |
-| initializer와 gather 모두 정상 | Constant 표현과 MatMul이 각각 영향을 주었을 수 있으므로 gather를 최종 후보로 사용 |
-| 세 모델 모두 같은 수준으로 실패 | 실제 activation calibration, `Q=1` attention 또는 다른 실제 그래프 조합을 추가 진단 |
+| no identity가 정상 | identity selection MatMul 14회의 lowering/양자화 누적이 원인 |
+| no identity는 실패하고 final Slice가 정상 | 마지막 `111→1` selection MatMul 2개가 원인 |
+| 두 후보 모두 정상 | identity 제거만으로 충분한지 no identity 결과를 우선 보고 더 단순한 모델 선택 |
+| 두 후보 모두 기존처럼 실패 | 앞쪽 scattered selection MatMul, 실제 activation calibration 또는 `Q=1` attention을 추가 진단 |
 | 고정 입력 cosine은 정상인데 정확도만 낮음 | calibration coverage와 이미지별 activation outlier를 우선 조사 |
 
-세 모델 모두 실패할 경우 다음 진단은 `111→1` selection 단독,
-`Q=1/KV=111` 마지막 attention block, 실제 가중치를 사용한 block-prefix MXQ 순서로
-진행한다. 합성 모델을 더 크게 만드는 것보다 실제 ONNX를 블록별 prefix로 잘라 최초로
-출력이 어긋나는 블록을 찾는 편이 정보량이 많다.
+두 후보 모두 실패할 경우 다음 진단은 `Q=1/KV=111` 마지막 attention block과 실제
+가중치를 사용한 block-prefix MXQ 순서로 진행한다. 합성 모델을 더 크게 만드는 것보다
+실제 ONNX를 블록별 prefix로 잘라 최초로 출력이 어긋나는 블록을 찾는 편이 정보량이
+많다.
 
 ## 9. 현재 배제하거나 가능성이 낮아진 원인
 
@@ -338,6 +405,10 @@ python3 benchmark/ablation/eval_tiny30_core_ablation.py \
 - rectangular attention 연산 자체의 전면적인 미지원
 - 단순한 마지막 CLS token off-by-one 선택
 - Global8 core 설정만의 문제
+- Constant node와 initializer 표현 차이
+
+Gather graph는 float ONNX 등가성 실험에는 사용했지만 qbcompiler가 MXQ로 변환하지
+못하므로 Patch Slimming 배포 해결책에서는 제외한다.
 
 이 항목들은 절대적으로 불가능하다는 뜻이 아니라, 현재 증거상 우선순위가 낮다는
 의미다.
