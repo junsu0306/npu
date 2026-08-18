@@ -434,10 +434,13 @@ python3 benchmark/ablation/eval_tiny30_core_ablation.py \
 | 기존 Patch Slimming | 1.1390 | 1.2503 | 0.343667 |
 | no identity | 0.8337 | 0.9308 | 0.663482 |
 | no identity + final Slice | 0.8351 | 0.9318 | 0.662778 |
+| all static Slice+Concat | 0.8347 | 0.9342 | 0.663396 |
 
 identity MatMul 제거로 기존보다 분명히 개선됐지만, 정상 MXQ에서 기대하는 cosine
 `0.98` 전후에는 아직 크게 못 미친다. 마지막 CLS MatMul을 Slice로 바꾼 후보는
 no identity 후보와 사실상 같은 결과이므로 마지막 `111→1` 선택은 주원인이 아니다.
+실제 selection MatMul 10개까지 모두 Slice+Concat으로 바꾼 후보도 같은 오차 수준이므로,
+selection MatMul 연산 자체 역시 남은 정확도 손실의 주원인에서 제외한다.
 
 같은 ImageNet 표본(1,000 classes × 1 image, seed 42, `timm`)의 정확도는 다음과 같다.
 
@@ -447,10 +450,17 @@ no identity 후보와 사실상 같은 결과이므로 마지막 `111→1` 선�
 | 기존 Patch MXQ | 9.30% | 19.10% | 362.81 img/s |
 | no identity MXQ | 50.00% | 76.40% | 386.64 img/s |
 | no identity + final Slice MXQ | 50.20% | 76.20% | 389.33 img/s |
+| all static Slice+Concat MXQ | 49.90% | 76.40% | 381.36 img/s |
 
 두 신규 MXQ의 Top-1 예측 일치율은 `97.10%`이다. 결과 JSON은
 `results/diagnostics/patch_slimming_original_vs_supported_rewrites_mxq_1000_timm_seed42.json`에
 저장했다.
+
+Slice+Concat MXQ의 결과는
+`results/diagnostics/patch_slimming_slice_concat_mxq_1000_timm_seed42.json`에 저장했다.
+no identity MXQ와 Slice+Concat MXQ의 Top-1 예측 일치율은 `91.10%`이며 정확도와 고정
+입력 오차는 같은 수준이다. Slice+Concat MXQ SHA-256은
+`925862c39953e268bc26db80862097589a0941ba387389ffbcfb7228ac6ed26c`이다.
 
 ## 8. 결과 해석
 
@@ -468,10 +478,11 @@ no identity 후보와 사실상 같은 결과이므로 마지막 `111→1` 선�
 많다.
 
 현재 실측 결과는 identity MatMul이 큰 정확도 하락의 주요 원인 중 하나지만 유일한
-원인은 아니라는 뜻이다. 다음 우선순위는 남아 있는 실제 scattered selection MatMul
-10개를 block-prefix 방식으로 이분 탐색해, 어느 slimming stage부터 MXQ 오차가 급증하는지
-찾는 것이다. final Slice 후보가 추가 개선을 만들지 못했으므로 마지막 CLS 선택만 따로
-조사하는 우선순위는 낮춘다.
+원인은 아니라는 뜻이다. 실제 selection MatMul 10개를 모두 Slice+Concat으로 바꿔도
+추가 개선이 없었으므로, 해당 MatMul 연산 자체보다는 token shape가 바뀐 이후의 실제
+Transformer block 또는 activation quantization을 우선 조사해야 한다. 다음 진단은
+실제 가중치의 block-prefix 출력을 ONNX와 MXQ로 비교해 최초로 오차가 급증하는 block을
+찾는 것이다. final Slice와 selection 표현만 따로 조사하는 우선순위는 낮춘다.
 
 ## 9. 현재 배제하거나 가능성이 낮아진 원인
 
