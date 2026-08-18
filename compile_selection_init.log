@@ -1,0 +1,162 @@
+[2026-08-18 15:45:53] qbcompiler.model_dict.common._reshape_util.reshape_check : [INFO] Parser is configured to use reshape_check_util (Python implementation).
+[WARN] preprocess_profile.json is missing in /workspace/npu/assets/calib_hwc; verify calibration/runtime preprocessing manually
+Calibration list: 1000 HWC files -> /workspace/npu/compile/mxq/calib_hwc.txt
+Found 1 ONNX model(s) (filter='__selection_init.onnx')
+
+============================================================
+Compiling: tiny30__patch_slimming__nhwc_b1_npusafe__selection_init.onnx
+  output      : /workspace/npu/assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_init_vt_global8.mxq
+  scheme      : global8
+  cpu_offload : True
+  quant       : vision_transformer
+============================================================
+[⣾] Parsing deep learning model....[K2026-08-18 15:45:54 | INFO | mblt.reshape_check | use reshape_check_util with py backend.
+[⣽] Parsing deep learning model.....[K2026-08-18 15:45:54 | INFO | mblt.qbcompiler.model_dict_new.parser.backend.onnx.load_onnx_model | LOAD /workspace/npu/assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_init.onnx, onnx opset=17, ir_version=8
+2026-08-18 15:45:54 | INFO | mblt.qbcompiler.model_dict_new.parser.backend.onnx.inference | run onnx inference session
+[⣻] Parsing deep learning model......[K2026-08-18 15:45:54 | INFO | mblt.qbcompiler.model_dict_new.parser.backend.onnx.inference | onnx inference session done.
+2026-08-18 15:45:54 | INFO | mblt.qbcompiler.model_dict_new.parser.backend.onnx.onnx_graph_builder | onnx opset=17, ir_version=8 optypes={'Mul', 'Constant', 'Gemm', 'Div', 'Concat', 'Reshape', 'Shape', 'MatMul', 'Add', 'Conv', 'Softmax', 'Slice', 'Transpose', 'Squeeze', 'Erf', 'LayerNormalization'}
+[⢿] Parsing deep learning model...[K2026-08-18 15:45:54 | INFO | mblt.mblt.summarize | 
+
+=======================================================================
+                 Summary by Operator Type[Model Loaded]                 
+=======================================================================
+       OpType       | Count | Unsupported | Supported(%) | GOPS | GMAC 
+--------------------+-------+-------------+--------------+------+------
+Adding              |    110|          110|           0.0|  0.00|  0.00
+Concatenate         |      1|            1|           0.0|  0.00|  0.00
+Convolution         |      1|            1|           0.0|  0.06|  0.03
+Div                 |     12|           12|           0.0|  0.00|  0.00
+Erf                 |     12|           12|           0.0|  0.00|  0.00
+Input               |      1|            1|           0.0|  0.00|  0.00
+InputConstant       |    328|          328|           0.0|  0.00|  0.00
+LayerNormalization  |     25|           25|           0.0|  0.00|  0.00
+MatMul              |    121|          121|           0.0|  0.00|  0.00
+Multiply            |     36|           36|           0.0|  0.00|  0.00
+Output              |      1|            1|           0.0|  0.00|  0.00
+Reshape             |     53|           53|           0.0|  0.00|  0.00
+Softmax             |     12|           12|           0.0|  0.00|  0.00
+Transpose           |     53|           53|           0.0|  0.00|  0.00
+--------------------+-------+-------------+--------------+------+------
+All                 |    766|          766|           0.0|  0.07|  0.03
+=======================================================================
+
+2026-08-18 15:45:54 | INFO | mblt.mblt.summarize | [parser]
+Number of Subgraphs: 1
+graph order: [0]
+stateful_lstm_subgraphs: {}
+backend: onnx
+model inputs: ['name: input, src_shape: (1,224,224,3), dataformat: NHWC, origin_name: ']
+model outputs: ['name: output, src_shape: (1,1000), dataformat: UNKNOWN, origin_name: ']
+2026-08-18 15:45:54 | INFO | mblt.mblt.summarize | outputs:
+2026-08-18 15:45:54 | INFO | mblt.mblt.transform.basic_transform | optimize_level=999.
+2026-08-18 15:45:54 | INFO | mblt.mblt.transform.basic_transform | ================ [OPTIMIZE stage=1, num_ops=766] ================
+[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K2026-08-18 15:45:56 | INFO | mblt.mblt.transform.basic_transform | ================ [OPTIMIZE stage=2, num_ops=531] ================
+[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K2026-08-18 15:45:57 | INFO | mblt.mblt.transform.basic_transform | ================ [OPTIMIZE stage=3, num_ops=483] ================
+[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K2026-08-18 15:46:10 | INFO | mblt.mblt.transform.basic_transform | ================ [OPTIMIZE stage=4, num_ops=405] ================
+[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K2026-08-18 15:46:16 | INFO | mblt.mblt.transform.basic_transform | ================ [OPTIMIZE stage=5, num_ops=331] ================
+[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K2026-08-18 15:46:20 | INFO | mblt.mblt.transform.basic_transform | ================ [OPTIMIZE stage=6, num_ops=297] ================
+[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K[⣾] Parsing deep learning model....[K2026-08-18 15:46:21 | INFO | mblt.mblt.transform.basic_transform | ================ [OPTIMIZE stage=7, num_ops=297] ================
+[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K[⡿] Parsing deep learning model....[K2026-08-18 15:46:22 | INFO | mblt.mblt.transform.basic_transform | ================ [OPTIMIZE stage=8, num_ops=297] ================
+[⣟] Parsing deep learning model.....[K[⣯] Parsing deep learning model......[K[⣷] Parsing deep learning model...[K2026-08-18 15:46:22 | INFO | mblt.mblt.transform.basic_transform | ================ [OPTIMIZE stage=9, num_ops=297] ================
+[⣾] Parsing deep learning model....[K[⣽] Parsing deep learning model.....[K[⣻] Parsing deep learning model......[K[⢿] Parsing deep learning model...[K2026-08-18 15:46:23 | INFO | mblt.mblt.summarize | 
+
+=======================================================================
+      Summary by Operator Type[HL compilation done. Device=Aries2]      
+=======================================================================
+       OpType       | Count | Unsupported | Supported(%) | GOPS | GMAC 
+--------------------+-------+-------------+--------------+------+------
+Adding              |     25|            0|         100.0|  0.00|  0.00
+Concatenate         |      1|            0|         100.0|  0.00|  0.00
+Convolution         |     74|            0|         100.0|  0.91|  0.46
+Gelu                |     12|            0|         100.0|  0.00|  0.00
+HeaderView          |     35|            0|         100.0|  0.00|  0.00
+HeaderViewRevert    |     11|            0|         100.0|  0.00|  0.00
+Input               |      1|            0|         100.0|  0.00|  0.00
+InputConstant       |     26|            0|         100.0|  0.00|  0.00
+LayerNormalization  |     25|            0|         100.0|  0.00|  0.00
+MatMul              |     48|            0|         100.0|  0.00|  0.00
+MultiplyConstant    |     12|            0|         100.0|  0.00|  0.00
+Output              |      1|            1|           0.0|  0.00|  0.00
+Reshape             |      3|            1|         66.67|  0.00|  0.00
+Softmax             |     12|            0|         100.0|  0.00|  0.00
+Transpose           |     12|            0|         100.0|  0.00|  0.00
+--------------------+-------+-------------+--------------+------+------
+All                 |    298|            2|         99.33|  0.92|  0.46
+=======================================================================
+
+2026-08-18 15:46:23 | INFO | mblt.mblt.summarize | [parser]
+Number of Subgraphs: 1
+graph order: [0]
+stateful_lstm_subgraphs: {}
+backend: onnx
+model inputs: ['name: input, src_shape: (1,224,224,3), dataformat: NHWC, origin_name: ']
+model outputs: ['name: output, src_shape: (1,1000), dataformat: UNKNOWN, origin_name: ']
+2026-08-18 15:46:23 | INFO | mblt.mblt.summarize | outputs:
+[⡿] Parsing deep learning model....[K[⣟] Parsing deep learning model.....[K2026-08-18 15:46:24 | INFO | mblt.qbcompiler.model_dict_new.parser.parser | Write mblt: /tmp/qbcompiler/frontend/c968caac-9076-4d83-b95a-c88ab69a6622/model.mblt
+✔ Parsing deep learning model... Done!          
+[2026-08-18 15:46:24.026] Setting Quantizer Config (json)...
+[2026-08-18 15:46:24.027] Setting Compile Config (typed)...
+[2026-08-18 15:46:24.027] Performing Quantization...
+[2026-08-18 15:46:24.054] complete high-level model optimizing
+[2026-08-18 15:46:24.254] Try to load calibration data set from dataset txt. Dataset txt file path = /workspace/npu/compile/mxq/calib_hwc.txt
+[2026-08-18 15:46:24.255] There are 1000 files in txt file.
+[2026-08-18 15:46:35.958] Quantizer::Utils::UtilsQuantize getCalTensorImpl | Loaded 1000 calibration tensors. (0 failed)
+[2026-08-18 15:46:36.125] Runtime error
+Traceback (most recent call last):
+  File "/workspace/npu/compile/mxq/compile_hwc.py", line 125, in <module>
+    mxq_compile(
+  File "/usr/local/lib/python3.10/dist-packages/qbcompiler/frontend.py", line 589, in mxq_compile
+    model_dict.compile(
+  File "/usr/local/lib/python3.10/dist-packages/qbcompiler/frontend.py", line 205, in compile
+    super().compile(
+  File "/usr/local/lib/python3.10/dist-packages/qbcompiler/compiler/compiler.py", line 968, in compile
+    _quantization_task(
+  File "/usr/local/lib/python3.10/dist-packages/qbcompiler/compiler/compiler.py", line 724, in _quantization_task
+    compiler.compile()
+RuntimeError: Error. quantize failed. CUDA error: uncorrectable ECC error encountered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Exception raised from c10_cuda_check_implementation at /pytorch/c10/cuda/CUDAException.cpp:43 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x98 (0x7fa5bb1da5e8 in /usr/local/lib/python3.10/dist-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) + 0xe0 (0x7fa5bb16f4a2 in /usr/local/lib/python3.10/dist-packages/torch/lib/libc10.so)
+frame #2: c10::cuda::c10_cuda_check_implementation(int, char const*, char const*, int, bool) + 0x3c2 (0x7fa62635a422 in /usr/local/lib/python3.10/dist-packages/torch/lib/libc10_cuda.so)
+frame #3: <unknown function> + 0x64c88 (0x7fa626368c88 in /usr/local/lib/python3.10/dist-packages/torch/lib/libc10_cuda.so)
+frame #4: <unknown function> + 0x6517c (0x7fa62636917c in /usr/local/lib/python3.10/dist-packages/torch/lib/libc10_cuda.so)
+frame #5: c10::cuda::getCurrentCUDAStream(signed char) + 0xf (0x7fa62636923f in /usr/local/lib/python3.10/dist-packages/torch/lib/libc10_cuda.so)
+frame #6: <unknown function> + 0x3d106 (0x7fa626341106 in /usr/local/lib/python3.10/dist-packages/torch/lib/libc10_cuda.so)
+frame #7: <unknown function> + 0x161815a (0x7fa60632715a in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #8: at::detail::empty_strided_generic(c10::ArrayRef<long>, c10::ArrayRef<long>, c10::Allocator*, c10::DispatchKeySet, c10::ScalarType) + 0xc7 (0x7fa606323fe7 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #9: at::detail::empty_strided_cuda(c10::ArrayRef<long>, c10::ArrayRef<long>, c10::ScalarType, std::optional<c10::Device>) + 0x8d (0x7fa5bbdb02fd in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cuda.so)
+frame #10: at::detail::empty_strided_cuda(c10::ArrayRef<long>, c10::ArrayRef<long>, std::optional<c10::ScalarType>, std::optional<c10::Layout>, std::optional<c10::Device>, std::optional<bool>) + 0x6f (0x7fa5bbdb048f in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cuda.so)
+frame #11: at::native::empty_strided_cuda(c10::ArrayRef<long>, c10::ArrayRef<long>, std::optional<c10::ScalarType>, std::optional<c10::Layout>, std::optional<c10::Device>, std::optional<bool>) + 0x3a (0x7fa5bbfebdca in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cuda.so)
+frame #12: <unknown function> + 0x3323c58 (0x7fa5be585c58 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cuda.so)
+frame #13: <unknown function> + 0x3323d40 (0x7fa5be585d40 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cuda.so)
+frame #14: at::_ops::empty_strided::redispatch(c10::DispatchKeySet, c10::ArrayRef<c10::SymInt>, c10::ArrayRef<c10::SymInt>, std::optional<c10::ScalarType>, std::optional<c10::Layout>, std::optional<c10::Device>, std::optional<bool>) + 0xf8 (0x7fa6072590b8 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #15: <unknown function> + 0x28fa268 (0x7fa607609268 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #16: at::_ops::empty_strided::call(c10::ArrayRef<c10::SymInt>, c10::ArrayRef<c10::SymInt>, std::optional<c10::ScalarType>, std::optional<c10::Layout>, std::optional<c10::Device>, std::optional<bool>) + 0x161 (0x7fa6072af6c1 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #17: <unknown function> + 0x19ca465 (0x7fa6066d9465 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #18: at::native::_to_copy(at::Tensor const&, std::optional<c10::ScalarType>, std::optional<c10::Layout>, std::optional<c10::Device>, std::optional<bool>, bool, std::optional<c10::MemoryFormat>) + 0x1702 (0x7fa606a403c2 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #19: <unknown function> + 0x2b5588d (0x7fa60786488d in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #20: at::_ops::_to_copy::redispatch(c10::DispatchKeySet, at::Tensor const&, std::optional<c10::ScalarType>, std::optional<c10::Layout>, std::optional<c10::Device>, std::optional<bool>, bool, std::optional<c10::MemoryFormat>) + 0xf8 (0x7fa606efba28 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #21: <unknown function> + 0x28f735d (0x7fa60760635d in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #22: at::_ops::_to_copy::redispatch(c10::DispatchKeySet, at::Tensor const&, std::optional<c10::ScalarType>, std::optional<c10::Layout>, std::optional<c10::Device>, std::optional<bool>, bool, std::optional<c10::MemoryFormat>) + 0xf8 (0x7fa606efba28 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #23: <unknown function> + 0x48267cf (0x7fa6095357cf in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #24: <unknown function> + 0x4826d40 (0x7fa609535d40 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #25: at::_ops::_to_copy::call(at::Tensor const&, std::optional<c10::ScalarType>, std::optional<c10::Layout>, std::optional<c10::Device>, std::optional<bool>, bool, std::optional<c10::MemoryFormat>) + 0x223 (0x7fa606fa38f3 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #26: at::native::to(at::Tensor const&, std::optional<c10::ScalarType>, std::optional<c10::Layout>, std::optional<c10::Device>, std::optional<bool>, bool, bool, std::optional<c10::MemoryFormat>) + 0x10c (0x7fa606a3d4fc in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #27: <unknown function> + 0x2c60163 (0x7fa60796f163 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #28: at::_ops::to_dtype_layout::call(at::Tensor const&, std::optional<c10::ScalarType>, std::optional<c10::Layout>, std::optional<c10::Device>, std::optional<bool>, bool, bool, std::optional<c10::MemoryFormat>) + 0x238 (0x7fa60713b008 in /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so)
+frame #29: <unknown function> + 0x5c5859 (0x7fa476697859 in /usr/local/lib/python3.10/dist-packages/qbcompiler/mmc.cpython-310-x86_64-linux-gnu.so)
+frame #30: <unknown function> + 0x5fd961 (0x7fa4766cf961 in /usr/local/lib/python3.10/dist-packages/qbcompiler/mmc.cpython-310-x86_64-linux-gnu.so)
+frame #31: <unknown function> + 0x613eeb (0x7fa4766e5eeb in /usr/local/lib/python3.10/dist-packages/qbcompiler/mmc.cpython-310-x86_64-linux-gnu.so)
+frame #32: <unknown function> + 0x5bfd79 (0x7fa476691d79 in /usr/local/lib/python3.10/dist-packages/qbcompiler/mmc.cpython-310-x86_64-linux-gnu.so)
+frame #33: <unknown function> + 0x5c2d01 (0x7fa476694d01 in /usr/local/lib/python3.10/dist-packages/qbcompiler/mmc.cpython-310-x86_64-linux-gnu.so)
+frame #34: <unknown function> + 0x3e29a7 (0x7fa4764b49a7 in /usr/local/lib/python3.10/dist-packages/qbcompiler/mmc.cpython-310-x86_64-linux-gnu.so)
+frame #35: <unknown function> + 0x480dd4 (0x7fa476552dd4 in /usr/local/lib/python3.10/dist-packages/qbcompiler/mmc.cpython-310-x86_64-linux-gnu.so)
+frame #36: <unknown function> + 0x474475 (0x7fa476546475 in /usr/local/lib/python3.10/dist-packages/qbcompiler/mmc.cpython-310-x86_64-linux-gnu.so)
+<omitting python frames>
+frame #60: <unknown function> + 0x29d90 (0x7fa626e91d90 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #61: __libc_start_main + 0x80 (0x7fa626e91e40 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
