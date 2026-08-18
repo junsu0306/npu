@@ -4,7 +4,7 @@
 |---|---|
 | `generate_probes.py` | `diag_ps_01`~`diag_ps_09` ONNX, 입력, PyTorch reference 생성 |
 | `compare_onnx_mxq.py` | 같은 입력의 ONNX와 MXQ logits 비교 |
-| `rewrite_selections.py` | initializer/Gather 진단 및 identity 제거/static Slice 후보 생성 |
+| `rewrite_selections.py` | initializer/Gather 진단 및 identity 제거/static Slice+Concat 후보 생성 |
 | `evaluate_onnx_candidates.py` | 동일 ImageNet 샘플에서 원본·변환 ONNX 정확도와 logits 비교 |
 
 산출물 구조는 다음과 같다.
@@ -42,6 +42,7 @@ python3 diagnostics/patch_slimming/evaluate_onnx_candidates.py \
   --model original:assets/onnx/tiny30__patch_slimming__nhwc_b1_npusafe.onnx \
   --model no_identity:assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity.onnx \
   --model no_identity_final_slice:assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice.onnx \
+  --model slice_concat:assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_slice_concat.onnx \
   --val-dir /path/to/imagenet_val \
   --classes 1000 \
   --images-per-class 1 \

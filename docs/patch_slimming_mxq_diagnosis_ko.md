@@ -152,6 +152,7 @@ calibration data, preset, CPU offload 설정이 달랐을 가능성을 배제할
 | gather | `assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_gather.onnx` | ONNX 진단 전용: qbcompiler가 변환하지 못함 |
 | no identity | `assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity.onnx` | 현재 컴파일 후보 1 |
 | no identity + final Slice | `assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice.onnx` | 현재 컴파일 후보 2 |
+| all static Slice+Concat | `assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_slice_concat.onnx` | 현재 컴파일 후보 3: selection MatMul 완전 제거 |
 
 `initializer` 모델은 24개 선택 행렬을 Constant node에서 graph initializer로 옮겼다.
 MatMul은 그대로 유지한다.
@@ -170,6 +171,11 @@ MatMul을 사용하기 위해 선택한 구조라는 제약을 유지해야 한�
 수행하는 MatMul 10개는 그대로 유지한다. `no identity + final Slice`는 여기에 마지막
 CLS 선택 MatMul 2개를 `x[:, 0:1, :]`과 같은 정적 Slice로 바꾸며, 앞쪽 scattered
 selection MatMul 8개는 유지한다. 두 후보 모두 Gather op가 없다.
+
+`all static Slice+Concat` 모델은 identity MatMul 14개를 제거하고, 실제 selection
+MatMul 10개를 연속 index 구간별 static Slice와 Concat으로 교체한다. 선택 순서와 token
+출력은 그대로 유지하면서 selection용 MatMul과 Gather를 모두 제거한다. 변환 결과에는
+selection을 위한 Slice 80개와 Concat 8개가 추가된다.
 
 고정 진단 입력에서 원본과 모든 graph-rewrite 후보의 ONNX Runtime 출력은 완전히
 동일했다.
@@ -258,6 +264,7 @@ max_abs     = 4.7834015191
 9ace430037c738b01355543a6cc6f7e5dca72ad189d013bc587abc4a9628a6e0  tiny30__patch_slimming__nhwc_b1_npusafe__selection_gather.onnx
 6bb6de7459f2607be1ce31e426306882eb1bc755e907e065a04b75c7f2654f74  tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity.onnx
 db9088ffc1f76f60f0f5183141242723b8eb76c97d59f683379c312c309c040c  tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice.onnx
+ca4dee61ffeafa0044d912c9ede67fa1f589bdd7e532b3b92375af0db7a142ee  tiny30__patch_slimming__nhwc_b1_npusafe__selection_slice_concat.onnx
 ```
 
 현재 컴파일 대상 두 후보는 다음 명령으로 다시 생성할 수 있다.
@@ -271,6 +278,11 @@ python3 diagnostics/patch_slimming/rewrite_selections.py \
 python3 diagnostics/patch_slimming/rewrite_selections.py \
   --mode no_identity_final_slice \
   --output assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice.onnx \
+  --check-input assets/diagnostics/patch_slimming/input/diagnostic_input_hwc.npy
+
+python3 diagnostics/patch_slimming/rewrite_selections.py \
+  --mode slice_concat \
+  --output assets/experiments/patch_slimming/onnx/tiny30__patch_slimming__nhwc_b1_npusafe__selection_slice_concat.onnx \
   --check-input assets/diagnostics/patch_slimming/input/diagnostic_input_hwc.npy
 ```
 
@@ -338,6 +350,28 @@ assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__s
 assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_no_identity_final_slice_vt_global8.mxq
 ```
 
+모든 selection MatMul을 제거한 Slice+Concat 후보만 GPU 2번으로 컴파일하려면 다음을
+실행한다.
+
+```bash
+cd /workspace/npu
+
+CUDA_VISIBLE_DEVICES=2 \
+NPU_CALIB_DIR="$PWD/assets/calib_hwc" \
+NPU_ONNX_DIR="$PWD/assets/experiments/patch_slimming/onnx" \
+NPU_MXQ_DIR="$PWD/assets/experiments/patch_slimming/mxq" \
+NPU_INFERENCE_SCHEME=global8 \
+NPU_ONNX_FILTER='__selection_slice_concat' \
+python3 compile/mxq/compile_hwc.py \
+  2>&1 | tee compile_selection_slice_concat_gpu2.log
+```
+
+예상 출력은 다음 파일이다.
+
+```text
+assets/experiments/patch_slimming/mxq/tiny30__patch_slimming__nhwc_b1_npusafe__selection_slice_concat_vt_global8.mxq
+```
+
 ### 6.3 함께 기록할 정보
 
 ```bash
@@ -391,6 +425,33 @@ python3 benchmark/ablation/eval_tiny30_core_ablation.py \
   --output results/patch_slimming_supported_rewrites_5000.json
 ```
 
+### 7.1 2026-08-18 컴파일 결과
+
+동일한 diagnostic 입력으로 측정한 ONNX↔MXQ 차이는 다음과 같다.
+
+| MXQ | MAE | relative L2 | cosine |
+|---|---:|---:|---:|
+| 기존 Patch Slimming | 1.1390 | 1.2503 | 0.343667 |
+| no identity | 0.8337 | 0.9308 | 0.663482 |
+| no identity + final Slice | 0.8351 | 0.9318 | 0.662778 |
+
+identity MatMul 제거로 기존보다 분명히 개선됐지만, 정상 MXQ에서 기대하는 cosine
+`0.98` 전후에는 아직 크게 못 미친다. 마지막 CLS MatMul을 Slice로 바꾼 후보는
+no identity 후보와 사실상 같은 결과이므로 마지막 `111→1` 선택은 주원인이 아니다.
+
+같은 ImageNet 표본(1,000 classes × 1 image, seed 42, `timm`)의 정확도는 다음과 같다.
+
+| 모델 | Top-1 | Top-5 | 처리량 |
+|---|---:|---:|---:|
+| 원본 Patch ONNX | 67.30% | 88.30% | 28.91 img/s (CPU ONNX Runtime) |
+| 기존 Patch MXQ | 9.30% | 19.10% | 362.81 img/s |
+| no identity MXQ | 50.00% | 76.40% | 386.64 img/s |
+| no identity + final Slice MXQ | 50.20% | 76.20% | 389.33 img/s |
+
+두 신규 MXQ의 Top-1 예측 일치율은 `97.10%`이다. 결과 JSON은
+`results/diagnostics/patch_slimming_original_vs_supported_rewrites_mxq_1000_timm_seed42.json`에
+저장했다.
+
 ## 8. 결과 해석
 
 | 결과 | 해석 |
@@ -405,6 +466,12 @@ python3 benchmark/ablation/eval_tiny30_core_ablation.py \
 가중치를 사용한 block-prefix MXQ 순서로 진행한다. 합성 모델을 더 크게 만드는 것보다
 실제 ONNX를 블록별 prefix로 잘라 최초로 출력이 어긋나는 블록을 찾는 편이 정보량이
 많다.
+
+현재 실측 결과는 identity MatMul이 큰 정확도 하락의 주요 원인 중 하나지만 유일한
+원인은 아니라는 뜻이다. 다음 우선순위는 남아 있는 실제 scattered selection MatMul
+10개를 block-prefix 방식으로 이분 탐색해, 어느 slimming stage부터 MXQ 오차가 급증하는지
+찾는 것이다. final Slice 후보가 추가 개선을 만들지 못했으므로 마지막 CLS 선택만 따로
+조사하는 우선순위는 낮춘다.
 
 ## 9. 현재 배제하거나 가능성이 낮아진 원인
 

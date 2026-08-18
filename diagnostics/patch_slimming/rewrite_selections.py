@@ -13,6 +13,9 @@ rewrites that preserve the float ONNX result:
 * ``no_identity``: remove only identity selection MatMul operations.
 * ``no_identity_final_slice``: additionally replace the final CLS selection
   (111 -> 1) with a static Slice.  This mode does not introduce Gather.
+* ``slice_concat``: remove identity MatMuls and replace every remaining fixed
+  selection MatMul with static Slice operations plus Concat when needed.
+  This mode does not introduce Gather.
 """
 
 import argparse
@@ -46,6 +49,21 @@ def selection_ids(array):
     return np.argmax(array, axis=1).astype(np.int64)
 
 
+def contiguous_runs(ids):
+    """Compress ordered indices into half-open, unit-step Slice ranges."""
+    runs = []
+    start = end = int(ids[0])
+    for value in ids[1:]:
+        value = int(value)
+        if value == end + 1:
+            end = value
+            continue
+        runs.append((start, end + 1))
+        start = end = value
+    runs.append((start, end + 1))
+    return runs
+
+
 def rewrite(model, mode):
     consumers = defaultdict(list)
     for node in model.graph.node:
@@ -77,12 +95,58 @@ def rewrite(model, mode):
 
     selected_nodes = set()
     replacements = {}
-    rewritten_nodes = []
+    rewrites_by_output = {}
     initializers = list(model.graph.initializer)
     gather_count = 0
-    slice_count = 0
+    static_rewrite_count = 0
+    static_cls_slice_count = 0
+    static_slice_node_count = 0
+    concat_node_count = 0
     identity_count = 0
     initializer_count = 0
+
+    def build_static_slice_concat(matmul, constant, ids):
+        """Build a Gather-free equivalent of one fixed selection MatMul."""
+        source = matmul.input[1]
+        output = matmul.output[0]
+        runs = contiguous_runs(ids)
+        nodes = []
+        slice_outputs = []
+        for index, (start, end) in enumerate(runs):
+            prefix = f"{constant.output[0]}__static_slice_{index}"
+            slice_inputs = [
+                (f"{prefix}_starts", np.asarray([start], dtype=np.int64)),
+                (f"{prefix}_ends", np.asarray([end], dtype=np.int64)),
+                (f"{prefix}_axes", np.asarray([1], dtype=np.int64)),
+                (f"{prefix}_steps", np.asarray([1], dtype=np.int64)),
+            ]
+            for name, value in slice_inputs:
+                initializers.append(numpy_helper.from_array(value, name=name))
+            slice_output = (
+                output
+                if len(runs) == 1
+                else f"{output}__static_slice_part_{index}"
+            )
+            nodes.append(
+                helper.make_node(
+                    "Slice",
+                    inputs=[source] + [name for name, _value in slice_inputs],
+                    outputs=[slice_output],
+                    name=f"{matmul.name}__StaticSlice_{index}",
+                )
+            )
+            slice_outputs.append(slice_output)
+        if len(runs) > 1:
+            nodes.append(
+                helper.make_node(
+                    "Concat",
+                    inputs=slice_outputs,
+                    outputs=[output],
+                    axis=1,
+                    name=f"{matmul.name}__StaticConcat",
+                )
+            )
+        return nodes, len(runs), int(len(runs) > 1)
 
     if mode == "initializer":
         # Only Constant representation changes. MatMul nodes remain untouched.
@@ -97,7 +161,12 @@ def rewrite(model, mode):
             output = matmul.output[0]
             is_identity = n_out == n_in and np.array_equal(ids, np.arange(n_in))
             if is_identity:
-                if mode in ("gather", "no_identity", "no_identity_final_slice"):
+                if mode in (
+                    "gather",
+                    "no_identity",
+                    "no_identity_final_slice",
+                    "slice_concat",
+                ):
                     selected_nodes.update((id(constant), id(matmul)))
                     replacements[output] = source
                     identity_count += 1
@@ -107,7 +176,7 @@ def rewrite(model, mode):
                 selected_nodes.update((id(constant), id(matmul)))
                 index_name = f"{constant.output[0]}__indices"
                 initializers.append(numpy_helper.from_array(ids, name=index_name))
-                rewritten_nodes.append(
+                rewrites_by_output[output] = [
                     helper.make_node(
                         "Gather",
                         inputs=[source, index_name],
@@ -115,31 +184,33 @@ def rewrite(model, mode):
                         axis=1,
                         name=f"{matmul.name}__Gather",
                     )
-                )
+                ]
                 gather_count += 1
                 continue
 
             is_final_cls = n_out == 1 and n_in > 1 and np.array_equal(ids, [0])
             if mode == "no_identity_final_slice" and is_final_cls:
                 selected_nodes.update((id(constant), id(matmul)))
-                prefix = f"{constant.output[0]}__slice"
-                slice_inputs = [
-                    (f"{prefix}_starts", np.asarray([0], dtype=np.int64)),
-                    (f"{prefix}_ends", np.asarray([1], dtype=np.int64)),
-                    (f"{prefix}_axes", np.asarray([1], dtype=np.int64)),
-                    (f"{prefix}_steps", np.asarray([1], dtype=np.int64)),
-                ]
-                for name, value in slice_inputs:
-                    initializers.append(numpy_helper.from_array(value, name=name))
-                rewritten_nodes.append(
-                    helper.make_node(
-                        "Slice",
-                        inputs=[source] + [name for name, _value in slice_inputs],
-                        outputs=[output],
-                        name=f"{matmul.name}__StaticClsSlice",
-                    )
+                nodes, slices, concats = build_static_slice_concat(
+                    matmul, constant, ids
                 )
-                slice_count += 1
+                rewrites_by_output[output] = nodes
+                static_rewrite_count += 1
+                static_cls_slice_count += 1
+                static_slice_node_count += slices
+                concat_node_count += concats
+                continue
+
+            if mode == "slice_concat":
+                selected_nodes.update((id(constant), id(matmul)))
+                nodes, slices, concats = build_static_slice_concat(
+                    matmul, constant, ids
+                )
+                rewrites_by_output[output] = nodes
+                static_rewrite_count += 1
+                static_cls_slice_count += int(is_final_cls)
+                static_slice_node_count += slices
+                concat_node_count += concats
 
     def resolve(name):
         seen = set()
@@ -151,21 +222,23 @@ def rewrite(model, mode):
         return name
 
     new_nodes = []
-    rewrite_by_output = {node.output[0]: node for node in rewritten_nodes}
     inserted_rewrites = set()
     for node in model.graph.node:
         if id(node) in selected_nodes:
             if node.op_type == "MatMul":
-                replacement = rewrite_by_output.get(node.output[0])
-                if replacement is not None:
-                    new_nodes.append(replacement)
-                    inserted_rewrites.add(replacement.output[0])
+                replacements_for_node = rewrites_by_output.get(node.output[0])
+                if replacements_for_node is not None:
+                    for replacement in replacements_for_node:
+                        for index, name in enumerate(replacement.input):
+                            replacement.input[index] = resolve(name)
+                        new_nodes.append(replacement)
+                    inserted_rewrites.add(node.output[0])
             continue
         for index, name in enumerate(node.input):
             node.input[index] = resolve(name)
         new_nodes.append(node)
 
-    missing = set(rewrite_by_output) - inserted_rewrites
+    missing = set(rewrites_by_output) - inserted_rewrites
     if missing:
         raise RuntimeError(f"Failed to insert replacement nodes for: {sorted(missing)}")
 
@@ -179,11 +252,14 @@ def rewrite(model, mode):
     return {
         "selection_matmuls": len(selections),
         "selection_matmuls_preserved": (
-            len(selections) - identity_count - gather_count - slice_count
+            len(selections) - identity_count - gather_count - static_rewrite_count
         ),
         "constants_moved_to_initializers": initializer_count,
         "gathers": gather_count,
-        "static_cls_slices": slice_count,
+        "selection_matmuls_rewritten_static": static_rewrite_count,
+        "static_cls_slices": static_cls_slice_count,
+        "static_slice_nodes": static_slice_node_count,
+        "concat_nodes": concat_node_count,
         "identity_matmuls_removed": identity_count,
     }
 
@@ -223,6 +299,7 @@ def main():
             "initializer",
             "no_identity",
             "no_identity_final_slice",
+            "slice_concat",
         ],
         default="no_identity",
     )
