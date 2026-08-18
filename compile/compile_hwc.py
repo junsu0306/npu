@@ -27,10 +27,10 @@ from qbcompiler import mxq_compile
 
 # ── 컴파일 설정 ────────────────────────────────────────────────────────────────
 # "single" | "multi" | "global" | "global4" | "global8"
-INFERENCE_SCHEME = "global8"
+INFERENCE_SCHEME = os.environ.get("NPU_INFERENCE_SCHEME", "global8")
 
 # 파일명에 이 문자열이 포함된 .onnx 만 컴파일. None 이면 전체 스캔.
-FILE_FILTER = "_npusafe"
+FILE_FILTER = os.environ.get("NPU_ONNX_FILTER", "_npusafe") or None
 
 # 미지원 op(dynamic gather 등)을 CPU 서브그래프로 분리
 CPU_OFFLOAD = True

@@ -15,14 +15,14 @@ HWC .npy 텐서 (assets/calib_hwc/)
     ▼  [DOCKER] compile_hwc.py
 MXQ 파일 (assets/mxq/)
     │
-    ▼  [NPU] run_npu.py
+    ▼  [NPU] benchmark/runtime/run_npu.py
 추론 결과 + 벤치마크
 ```
 
 > **환경 구분**
 > - 캘리브레이션 데이터 생성(`gen_calib_hwc.py`) → **로컬 (Jetson Orin)**
 > - MXQ 컴파일(`compile_hwc.py`) → **qbcompiler Docker 컨테이너 내부**
-> - NPU 추론(`run_npu.py`) → **드라이버 설치된 Jetson Orin**
+> - NPU 추론(`benchmark/runtime/run_npu.py`) → **드라이버 설치된 Jetson Orin**
 
 ---
 
@@ -45,10 +45,14 @@ npu/
 │   ├── calib_hwc.txt           # 자동 생성 파일 목록 (git 제외)
 │   └── compile_resnet50.py     # ResNet50 sanity-check용
 │
-├── run_npu.py                  # Step 4: NPU 추론 + 벤치마크
-├── test_npu.py                 # Top-5 정확도 테스트
-├── infer_onnx.py               # ONNX Runtime CPU 추론 (변환 전 검증용)
-└── infer_resnet50.py           # qbruntime 사용 예시
+├── benchmark/
+│   ├── runtime/run_npu.py      # Step 4: direct qbruntime 추론
+│   ├── runtime/test_npu.py     # calibration 이미지 Top-5 확인
+│   ├── runtime/infer_resnet50.py
+│   ├── onnx/infer_onnx.py      # ONNX Runtime CPU reference
+│   ├── model_zoo/              # 정확도·속도·메모리 통합 벤치마크
+│   └── ablation/               # single/global8 비교
+└── docs/                       # 사용법 및 결과 문서
 ```
 
 ---
@@ -60,7 +64,7 @@ npu/
 컴파일 전에 ONNX Runtime으로 모델 출력을 검증합니다 (입력 포맷: NCHW):
 
 ```bash
-python3 infer_onnx.py \
+python3 benchmark/onnx/infer_onnx.py \
   --model "assets/onnx/vit_tiny_prune50_global _reduced.onnx" \
   --image val_example.JPEG
 ```
@@ -168,12 +172,12 @@ python3 /workspace/npu/compile/compile_hwc.py
 
 ```bash
 # warmup 5회, 측정 20회, 결과 results/ 에 저장
-python3 run_npu.py \
+python3 benchmark/runtime/run_npu.py \
   --mxq "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq" \
   --image val_example.JPEG
 
 # 정밀 측정
-python3 run_npu.py \
+python3 benchmark/runtime/run_npu.py \
   --mxq "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq" \
   --image val_example.JPEG \
   --runs 100 --warmups 10 --no-save
@@ -226,7 +230,7 @@ model.dispose()                           # 리소스 해제
 ### Top-5 정확도 테스트
 
 ```bash
-python3 test_npu.py \
+python3 benchmark/runtime/test_npu.py \
   --model "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq" \
   --labels imagenet_classes.txt \
   --n 50
@@ -290,8 +294,8 @@ python3 test_npu.py \
 |---|---|---|
 | `gen_calib_hwc.py` 출력 | HWC | `(224, 224, 3)` |
 | `compile_hwc.py` 캘리브레이션 입력 | HWC | `(224, 224, 3)` |
-| `run_npu.py` / `test_npu.py` NPU 입력 | HWC | `(224, 224, 3)` |
-| `infer_onnx.py` CPU 검증 입력 | NCHW | `(1, 3, 224, 224)` |
+| `benchmark/runtime/run_npu.py` / `test_npu.py` NPU 입력 | HWC | `(224, 224, 3)` |
+| `benchmark/onnx/infer_onnx.py` CPU 검증 입력 | NCHW | `(1, 3, 224, 224)` |
 
 ---
 
@@ -310,7 +314,7 @@ pip install /workspace/npu/assets/qbcompiler-1.1.0+aries2-py3-none-any.whl
 python3 /workspace/npu/compile/compile_hwc.py
 
 # [로컬] NPU 추론
-python3 run_npu.py \
+python3 benchmark/runtime/run_npu.py \
   --mxq "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq" \
   --image val_example.JPEG --runs 50 --warmups 10
 
@@ -322,7 +326,7 @@ python3 /workspace/npu/compile/compile_hwc.py
 
 # ── 정확도 테스트 ────────────────────────────────────────────────────
 
-python3 test_npu.py \
+python3 benchmark/runtime/test_npu.py \
   --model "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq" \
   --labels imagenet_classes.txt \
   --n 50

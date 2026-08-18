@@ -53,6 +53,6 @@ else:
 
 print(f"""
 테스트:
-  python3 test_npu.py --model assets/mxq/resnet50_timm.mxq --labels imagenet_classes.txt --n 10
-  python3 test_npu.py --model assets/mxq/resnet50_timm.mxq --labels imagenet_classes.txt --n 10 --chw
+  python3 benchmark/runtime/test_npu.py --model assets/mxq/resnet50_timm.mxq --labels imagenet_classes.txt --n 10
+  python3 benchmark/runtime/test_npu.py --model assets/mxq/resnet50_timm.mxq --labels imagenet_classes.txt --n 10 --chw
 """)

@@ -1,5 +1,6 @@
 aries_env/
 __pycache__/
+*.py[cod]
 
 # 자동 생성 / 대용량
 assets/calib_hwc/
@@ -8,3 +9,6 @@ assets/calib_chw/
 assets/bitconfig_saved/
 compile/calib_hwc.txt
 compile/calib_chw.txt
+
+# NPU benchmark outputs
+results/
