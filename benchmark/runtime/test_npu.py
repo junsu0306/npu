@@ -10,32 +10,13 @@ calibration_data 의 첫 N개 이미지로 NPU inference 테스트.
 import argparse
 import glob
 import os
-import cv2
 import numpy as np
 import qbruntime
 
-MEAN = np.float32([0.485, 0.456, 0.406])
-STD  = np.float32([0.229, 0.224, 0.225])
+from run_npu import build_config, preprocess
 
 NPU_ROOT  = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CALIB_DIR = os.path.join(NPU_ROOT, "assets", "calibration_data")
-
-
-def preprocess(image_path: str, chw: bool = False) -> np.ndarray:
-    img = cv2.imread(image_path, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError(f"Cannot read: {image_path}")
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    h, w = img.shape[:2]
-    scale = 256 / min(h, w)
-    img = cv2.resize(img, (int(round(w * scale)), int(round(h * scale))))
-    h, w = img.shape[:2]
-    img = img[(h-224)//2:(h-224)//2+224, (w-224)//2:(w-224)//2+224]
-    img = img.astype(np.float32) / 255.0
-    img = (img - MEAN) / STD              # HWC (224,224,3)
-    if chw:
-        img = img.transpose(2, 0, 1)      # CHW (3,224,224)
-    return img
 
 
 def load_labels(path):
@@ -51,6 +32,11 @@ def main():
     parser.add_argument("--labels", default=None)
     parser.add_argument("--n",      type=int, default=10, help="테스트할 이미지 수")
     parser.add_argument("--chw",    action="store_true", help="입력을 CHW (3,224,224)로 변환")
+    parser.add_argument("--preprocess", choices=["timm", "legacy"], default="timm")
+    parser.add_argument(
+        "--core-mode", choices=["single", "multi", "global", "global4", "global8"],
+        default="global8",
+    )
     args = parser.parse_args()
 
     labels = load_labels(args.labels)
@@ -65,15 +51,14 @@ def main():
     print(f"테스트 이미지: {len(test_imgs)}개\n")
 
     acc = qbruntime.Accelerator(0)
-    config = qbruntime.ModelConfig()
-    config.set_single_core_mode(core_ids=[
-        qbruntime.CoreId(qbruntime.Cluster.Cluster0, qbruntime.Core.Core0)
-    ])
+    config = build_config(args.core_mode)
     model = qbruntime.Model(args.model, config)
     model.launch(acc)
 
     for img_path in test_imgs:
-        img    = preprocess(img_path, chw=args.chw)
+        img = preprocess(img_path, args.preprocess)
+        if args.chw:
+            img = np.ascontiguousarray(img.transpose(2, 0, 1))
         logits = model.infer([img])[0].flatten()
         probs  = np.exp(logits - logits.max())
         probs /= probs.sum()

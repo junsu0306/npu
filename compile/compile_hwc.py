@@ -22,6 +22,7 @@ assets/onnx/*.onnx 를 자동 스캔해서 assets/mxq/*.mxq 로 컴파일.
 """
 
 import glob
+import json
 import os
 from qbcompiler import mxq_compile
 
@@ -53,10 +54,24 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "assets"))
 
 # ── 캘리브레이션 파일 목록 ──────────────────────────────────────────────────────
-CALIB_HWC_DIR = os.path.join(ASSETS_DIR, "calib_hwc")
+CALIB_HWC_DIR = os.environ.get(
+    "NPU_CALIB_DIR", os.path.join(ASSETS_DIR, "calib_hwc")
+)
+CALIB_HWC_DIR = os.path.abspath(CALIB_HWC_DIR)
 hwc_files = sorted(glob.glob(os.path.join(CALIB_HWC_DIR, "*.npy")))
 if not hwc_files:
     raise FileNotFoundError(f"No HWC calibration .npy files found in {CALIB_HWC_DIR}")
+
+profile_path = os.path.join(CALIB_HWC_DIR, "preprocess_profile.json")
+if os.path.isfile(profile_path):
+    with open(profile_path) as handle:
+        profile_metadata = json.load(handle)
+    print("Calibration preprocess profile: %s" % profile_metadata.get("profile", "unknown"))
+else:
+    print(
+        "[WARN] preprocess_profile.json is missing in %s; "
+        "verify calibration/runtime preprocessing manually" % CALIB_HWC_DIR
+    )
 
 CALIB_TXT = os.path.join(BASE_DIR, "calib_hwc.txt")
 with open(CALIB_TXT, "w") as f:

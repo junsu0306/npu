@@ -1,5 +1,12 @@
 # ONNX → MXQ 변환 파이프라인
 
+> **중요:** 이 문서의 ImageNet mean/std 전처리는 과거 `legacy` 경로를
+> 기록한다. `timm/vit_tiny_patch16_224.augreg_in21k_ft_in1k`과 현재 Tiny30
+> 모델은 bicubic, crop 0.9, `mean=std=(0.5, 0.5, 0.5)`가 필요하다.
+> 실제 컴파일·벤치마크는
+> [전처리·컴파일·벤치마크 가이드](preprocessing_compile_benchmark_guide_ko.md)를
+> 우선한다.
+
 Mobilint **qbcompiler v1.1.0**으로 ONNX 모델을 Aries2 NPU에서 실행 가능한 **MXQ** 형식으로 변환하는 전체 과정을 설명합니다.
 
 ---

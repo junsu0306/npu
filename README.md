@@ -16,6 +16,12 @@ ONNX 변환물의 MXQ 컴파일부터 실제 NPU 정확도·성능 측정까지 
 처음 사용하는 경우 [docs/REPOSITORY_LAYOUT.md](docs/REPOSITORY_LAYOUT.md)와
 [benchmark/README.md](benchmark/README.md)를 먼저 확인합니다.
 
+ViT-Tiny의 전처리, calibration, ONNX → MXQ 컴파일, Mobilint Model Zoo
+비교 평가는
+[docs/preprocessing_compile_benchmark_guide_ko.md](docs/preprocessing_compile_benchmark_guide_ko.md)를
+기준으로 실행합니다. AugReg ViT-Tiny는 ImageNet 표준 mean/std가
+아닌 `mean=std=(0.5, 0.5, 0.5)` 전처리가 필요합니다.
+
 ## 환경
 
 일반 Python 의존성은 다음과 같이 설치합니다.

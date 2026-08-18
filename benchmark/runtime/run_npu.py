@@ -20,25 +20,41 @@ import qbruntime
 
 NPU_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-MEAN = np.float32([0.485, 0.456, 0.406])
-STD  = np.float32([0.229, 0.224, 0.225])
+PREPROCESS_PROFILES = {
+    "timm": {
+        "resize_short": 249,
+        "interpolation": cv2.INTER_CUBIC,
+        "mean": np.float32([0.5, 0.5, 0.5]),
+        "std": np.float32([0.5, 0.5, 0.5]),
+    },
+    "legacy": {
+        "resize_short": 256,
+        "interpolation": cv2.INTER_LINEAR,
+        "mean": np.float32([0.485, 0.456, 0.406]),
+        "std": np.float32([0.229, 0.224, 0.225]),
+    },
+}
 
 
-def preprocess(image_path: str) -> np.ndarray:
+def preprocess(image_path: str, profile: str) -> np.ndarray:
     """ImageNet 전처리 → HWC float32 (224, 224, 3)."""
+    cfg = PREPROCESS_PROFILES[profile]
     img = cv2.imread(image_path, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError(f"이미지를 읽을 수 없음: {image_path}")
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     h, w = img.shape[:2]
-    scale = 256 / min(h, w)
-    img = cv2.resize(img, (int(round(w * scale)), int(round(h * scale))))
+    scale = cfg["resize_short"] / min(h, w)
+    img = cv2.resize(
+        img, (int(round(w * scale)), int(round(h * scale))),
+        interpolation=cfg["interpolation"],
+    )
     h, w = img.shape[:2]
     img = img[(h - 224) // 2:(h - 224) // 2 + 224,
               (w - 224) // 2:(w - 224) // 2 + 224]
     img = img.astype(np.float32) / 255.0
-    img = (img - MEAN) / STD
-    return img  # (224, 224, 3)
+    img = (img - cfg["mean"]) / cfg["std"]
+    return np.ascontiguousarray(img, dtype=np.float32)  # (224, 224, 3)
 
 
 def build_config(core_mode: str) -> qbruntime.ModelConfig:
@@ -49,21 +65,15 @@ def build_config(core_mode: str) -> qbruntime.ModelConfig:
         config.set_single_core_mode(core_ids=[
             qbruntime.CoreId(C.Cluster0, Co.Core0),
         ])
-    elif core_mode in ("multi", "global", "global4", "global8"):
-        # global 모드: 가용 코어 수에 맞게 CoreId 목록 전달
-        core_map = {
-            "multi":   [(C.Cluster0, Co.Core0), (C.Cluster0, Co.Core1)],
-            "global":  [(C.Cluster0, Co.Core0), (C.Cluster0, Co.Core1),
-                        (C.Cluster1, Co.Core0), (C.Cluster1, Co.Core1)],
-            "global4": [(C.Cluster0, Co.Core0), (C.Cluster0, Co.Core1),
-                        (C.Cluster1, Co.Core0), (C.Cluster1, Co.Core1)],
-            "global8": [(C.Cluster0, Co.Core0), (C.Cluster0, Co.Core1),
-                        (C.Cluster0, Co.Core2), (C.Cluster0, Co.Core3),
-                        (C.Cluster1, Co.Core0), (C.Cluster1, Co.Core1),
-                        (C.Cluster1, Co.Core2), (C.Cluster1, Co.Core3)],
-        }
-        ids = [qbruntime.CoreId(cl, co) for cl, co in core_map[core_mode]]
-        config.set_single_core_mode(core_ids=ids)
+    elif core_mode == "multi":
+        config.set_multi_core_mode(clusters=[C.Cluster0, C.Cluster1])
+    elif core_mode == "global":
+        # Legacy qbruntime name retained for MXQs compiled with scheme=global.
+        config.set_global_core_mode(clusters=[C.Cluster0, C.Cluster1])
+    elif core_mode == "global4":
+        config.set_global4_core_mode(clusters=[C.Cluster0, C.Cluster1])
+    elif core_mode == "global8":
+        config.set_global8_core_mode()
     else:
         raise ValueError(f"알 수 없는 core-mode: {core_mode}")
 
@@ -82,6 +92,10 @@ def main():
     parser.add_argument("--mxq",        required=True,            help="MXQ 파일 경로")
     parser.add_argument("--image",      default=os.path.join(NPU_ROOT, "val_example.JPEG"), help="추론할 이미지")
     parser.add_argument("--labels",     default=os.path.join(NPU_ROOT, "imagenet_classes.txt"))
+    parser.add_argument(
+        "--preprocess", default="timm", choices=sorted(PREPROCESS_PROFILES),
+        help="timm: AugReg ViT-Tiny recommended; legacy: old ImageNet normalization",
+    )
     parser.add_argument("--core-mode",  default="global8",
                         choices=["single", "multi", "global", "global4", "global8"],
                         help="NPU 코어 모드 (컴파일된 inference_scheme과 일치해야 함)")
@@ -94,11 +108,12 @@ def main():
         raise FileNotFoundError(f"MXQ 파일 없음: {args.mxq}")
 
     labels = load_labels(args.labels)
-    img    = preprocess(args.image)
+    img    = preprocess(args.image, args.preprocess)
 
     print(f"모델  : {args.mxq}")
     print(f"이미지: {args.image}  → shape={img.shape}")
-    print(f"코어  : {args.core_mode}, warmup={args.warmups}, runs={args.runs}\n")
+    print(f"코어  : {args.core_mode}, warmup={args.warmups}, runs={args.runs}")
+    print(f"전처리: {args.preprocess}\n")
 
     acc    = qbruntime.Accelerator(0)
     config = build_config(args.core_mode)
@@ -139,6 +154,7 @@ def main():
             "mxq": args.mxq,
             "image": args.image,
             "core_mode": args.core_mode,
+            "preprocess": args.preprocess,
             "runs": args.runs,
             "warmups": args.warmups,
             "total_s": round(total_s, 4),

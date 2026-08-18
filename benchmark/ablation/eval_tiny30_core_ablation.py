@@ -12,6 +12,7 @@ visible without relying on latency-only benchmark wrappers.
 import argparse
 import json
 import os
+import random
 import time
 
 import cv2
@@ -31,12 +32,19 @@ def parse_args():
         "--model", action="append", required=True, metavar="NAME:SCHEME:PATH",
         help="Repeat for each MXQ, e.g. single:single:assets/mxq/a.mxq",
     )
-    parser.add_argument("--manifest", required=True)
+    samples = parser.add_mutually_exclusive_group(required=True)
+    samples.add_argument("--manifest")
+    samples.add_argument(
+        "--val-dir", help="numeric ImageNet class directories (00000..00999)"
+    )
     parser.add_argument("--data-root", default=".")
     parser.add_argument("--limit", type=int, default=0, help="0 evaluates all")
+    parser.add_argument("--classes", type=int, default=1000)
+    parser.add_argument("--images-per-class", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
-        "--preprocess", choices=["legacy", "deit"], default="legacy",
-        help="legacy reproduces the existing baseline NPU pipeline",
+        "--preprocess", choices=["timm", "deit", "legacy"], default="timm",
+        help="timm/deit matches AugReg ViT; legacy reproduces the old incorrect pipeline",
     )
     parser.add_argument("--output", default="results/tiny30_core_ablation.json")
     return parser.parse_args()
@@ -77,6 +85,32 @@ def load_manifest(path, data_root, limit):
     return samples
 
 
+def collect_samples(val_dir, images_per_class, num_classes, seed, limit):
+    class_dirs = sorted(
+        entry for entry in os.listdir(val_dir)
+        if os.path.isdir(os.path.join(val_dir, entry)) and entry.isdigit()
+    )
+    rng = random.Random(seed)
+    if num_classes and num_classes < len(class_dirs):
+        class_dirs = sorted(rng.sample(class_dirs, num_classes))
+
+    samples = []
+    for class_dir in class_dirs:
+        folder = os.path.join(val_dir, class_dir)
+        images = sorted(
+            name for name in os.listdir(folder)
+            if name.lower().endswith((".jpg", ".jpeg", ".png"))
+        )
+        class_rng = random.Random(seed + int(class_dir))
+        chosen = class_rng.sample(images, min(images_per_class, len(images)))
+        samples.extend((os.path.join(folder, name), int(class_dir)) for name in chosen)
+        if limit and len(samples) >= limit:
+            return samples[:limit]
+    if not samples:
+        raise ValueError("no labeled images found below %s" % val_dir)
+    return samples
+
+
 def preprocess(path, mode):
     image = cv2.imread(path, cv2.IMREAD_COLOR)
     if image is None:
@@ -84,7 +118,7 @@ def preprocess(path, mode):
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     # Keep legacy byte-for-byte compatible with the existing NPU scripts.
-    resize_short = 256 if mode == "legacy" else 248
+    resize_short = 256 if mode == "legacy" else 249
     interpolation = cv2.INTER_LINEAR if mode == "legacy" else cv2.INTER_CUBIC
     height, width = image.shape[:2]
     scale = float(resize_short) / min(height, width)
@@ -107,45 +141,49 @@ def preprocess(path, mode):
 def build_config(scheme):
     config = qbruntime.ModelConfig()
     cluster, core = qbruntime.Cluster, qbruntime.Core
-    core_map = {
-        "single": [(cluster.Cluster0, core.Core0)],
-        "multi": [(cluster.Cluster0, core.Core0), (cluster.Cluster0, core.Core1)],
-        "global": [(cluster.Cluster0, core.Core0), (cluster.Cluster0, core.Core1),
-                   (cluster.Cluster1, core.Core0), (cluster.Cluster1, core.Core1)],
-        "global4": [(cluster.Cluster0, core.Core0), (cluster.Cluster0, core.Core1),
-                    (cluster.Cluster1, core.Core0), (cluster.Cluster1, core.Core1)],
-        "global8": [(cluster.Cluster0, core.Core0), (cluster.Cluster0, core.Core1),
-                    (cluster.Cluster0, core.Core2), (cluster.Cluster0, core.Core3),
-                    (cluster.Cluster1, core.Core0), (cluster.Cluster1, core.Core1),
-                    (cluster.Cluster1, core.Core2), (cluster.Cluster1, core.Core3)],
-    }
-    config.set_single_core_mode(
-        core_ids=[qbruntime.CoreId(c, k) for c, k in core_map[scheme]]
-    )
+    if scheme == "single":
+        config.set_single_core_mode(core_ids=[
+            qbruntime.CoreId(cluster.Cluster0, core.Core0),
+        ])
+    elif scheme == "multi":
+        config.set_multi_core_mode(clusters=[cluster.Cluster0, cluster.Cluster1])
+    elif scheme == "global":
+        config.set_global_core_mode(clusters=[cluster.Cluster0, cluster.Cluster1])
+    elif scheme == "global4":
+        config.set_global4_core_mode(clusters=[cluster.Cluster0, cluster.Cluster1])
+    elif scheme == "global8":
+        config.set_global8_core_mode()
+    else:
+        raise ValueError("unsupported scheme: %s" % scheme)
     return config
 
 
-def evaluate(name, scheme, path, accelerator, samples, tensors):
+def evaluate(name, scheme, path, accelerator, samples, preprocess_mode):
     model = qbruntime.Model(path, build_config(scheme))
     model.launch(accelerator)
     top1 = top5 = 0
     predictions = []
-    started = time.perf_counter()
+    inference_seconds = 0.0
+    wall_started = time.perf_counter()
     try:
-        for index, ((_, label), tensor) in enumerate(zip(samples, tensors), 1):
+        for index, (image_path, label) in enumerate(samples, 1):
+            # Stream images instead of retaining the entire validation set in RAM.
+            tensor = preprocess(image_path, preprocess_mode)
+            inference_started = time.perf_counter()
             logits = np.asarray(model.infer([tensor])[0]).reshape(-1)
+            inference_seconds += time.perf_counter() - inference_started
             order = np.argsort(logits)[::-1][:5]
             prediction = int(order[0])
             predictions.append(prediction)
             top1 += int(prediction == label)
             top5 += int(label in order)
-            if index % 100 == 0 or index == len(samples):
+            if index % 1000 == 0 or index == len(samples):
                 print("[%s] %d/%d top1=%.2f%%" % (
                     name, index, len(samples), 100.0 * top1 / index
-                ))
+                ), flush=True)
     finally:
         model.dispose()
-    elapsed = time.perf_counter() - started
+    wall_seconds = time.perf_counter() - wall_started
     return {
         "name": name,
         "scheme": scheme,
@@ -153,8 +191,9 @@ def evaluate(name, scheme, path, accelerator, samples, tensors):
         "n": len(samples),
         "top1": 100.0 * top1 / len(samples),
         "top5": 100.0 * top5 / len(samples),
-        "seconds": elapsed,
-        "images_per_second": len(samples) / elapsed,
+        "seconds": inference_seconds,
+        "images_per_second": len(samples) / inference_seconds,
+        "wall_seconds": wall_seconds,
         "predictions": predictions,
     }
 
@@ -162,12 +201,20 @@ def evaluate(name, scheme, path, accelerator, samples, tensors):
 def main():
     args = parse_args()
     specs = [parse_model(spec) for spec in args.model]
-    samples = load_manifest(args.manifest, args.data_root, args.limit)
-    print("Loading %d images with preprocess=%s" % (len(samples), args.preprocess))
-    tensors = [preprocess(path, args.preprocess) for path, _ in samples]
+    if args.manifest:
+        samples = load_manifest(args.manifest, args.data_root, args.limit)
+    else:
+        samples = collect_samples(
+            args.val_dir, args.images_per_class, args.classes, args.seed, args.limit
+        )
+    print("Streaming %d images with preprocess=%s" % (
+        len(samples), args.preprocess
+    ))
 
     accelerator = qbruntime.Accelerator(0)
-    results = [evaluate(*spec, accelerator, samples, tensors) for spec in specs]
+    results = [
+        evaluate(*spec, accelerator, samples, args.preprocess) for spec in specs
+    ]
     comparisons = []
     for left_index in range(len(results)):
         for right_index in range(left_index + 1, len(results)):
@@ -182,7 +229,14 @@ def main():
 
     payload = {
         "preprocess": args.preprocess,
-        "manifest": os.path.abspath(args.manifest),
+        "manifest": os.path.abspath(args.manifest) if args.manifest else None,
+        "val_dir": os.path.abspath(args.val_dir) if args.val_dir else None,
+        "sampling": {
+            "classes": args.classes,
+            "images_per_class": args.images_per_class,
+            "seed": args.seed,
+            "limit": args.limit,
+        },
         "models": results,
         "comparisons": comparisons,
     }
