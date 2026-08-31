@@ -6,13 +6,15 @@ npu/
 │   ├── calibration_data/   원본 calibration 이미지
 │   ├── calib_hwc/          컴파일 입력용 HWC NPY
 │   ├── onnx/               production ONNX
-│   └── mxq/                production MXQ
+│   ├── mxq/                production MXQ
+│   └── mxq_final12/        최종 비교 대상 MXQ 16개
 ├── compile/
 │   ├── calibration/        calibration tensor 생성
 │   ├── onnx/               컴파일 전 ONNX 정리
 │   └── mxq/                ONNX/Torch → MXQ 컴파일
 ├── benchmark/              실제 NPU 실행, 정확도 및 성능 측정
 │   ├── model_zoo/          Model Zoo wrapper 기반 통합 벤치마크
+│   ├── final/              최종 모델 정확도·속도·메모리·전력·FLOPs 종합 평가
 │   ├── runtime/            direct qbruntime 실행 예제
 │   ├── ablation/           single/global8 비교 실험
 │   └── onnx/               MXQ 변환 전 ONNX CPU reference
@@ -26,11 +28,13 @@ npu/
 2. `compile/mxq/compile_hwc.py`: 일반 ONNX → MXQ 컴파일
 3. `benchmark/model_zoo/run_smoke_test.py`: 실제 NPU에서 빠른 동작 검사
 4. `benchmark/model_zoo/run_model_zoo_benchmark.py`: 기존 Orin Model Zoo 경로로 전체 지표 측정
-5. `benchmark/ablation/eval_tiny30_core_ablation.py`: direct runtime으로 모델 정확도 비교
+5. `benchmark/final/eval_final_models.py`: 최종 custom MXQ 전체 지표 종합 평가
+6. `benchmark/ablation/eval_tiny30_core_ablation.py`: direct runtime으로 모델 정확도 비교
 
-메모리 분석이 필요한 경우 `benchmark/model_zoo/run_model_zoo_benchmark.py`에
-`--architecture`를 전달한다. 실제 NPU/process peak와 architecture 기반 activation
-상한이 하나의 JSON에 함께 저장되며, 각 값이 실측인지 산정치인지 필드가 분리되어 있다.
+최종 custom HWC float32 MXQ는 `benchmark/final/eval_final_models.py`로 실제
+NPU/process peak와 정확도·속도를 함께 측정한다. Model Zoo 입력 계약으로 컴파일된
+MXQ의 activation 분석은 `benchmark/model_zoo/run_model_zoo_benchmark.py`에
+`--architecture`를 전달한다.
 
 `Orin_Compression/scripts/run_detailed_benchmark.py`와 `run_npu_test.py`의 핵심 실행
 흐름은 각각 `model_zoo/run_model_zoo_benchmark.py`, `model_zoo/run_smoke_test.py`로 이식되었습니다.

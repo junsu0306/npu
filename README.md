@@ -5,11 +5,13 @@ ONNX 변환물의 MXQ 컴파일부터 실제 NPU 정확도·성능 측정까지 
 ## 디렉터리
 
 - `compile/`: calibration 생성, ONNX 정리, MXQ 컴파일을 역할별 하위 폴더로 관리
+- `benchmark/final/`: 최종 MXQ 전체 ImageNet 정확도·성능·자원 통합 평가
 - `benchmark/model_zoo/`: Model Zoo 전처리를 포함한 정확도·성능 벤치마크
 - `benchmark/runtime/`: direct `qbruntime` 실행
 - `benchmark/ablation/`: 코어 모드 등 원인 분리 실험
 - `benchmark/onnx/`: MXQ 이전 ONNX Runtime reference
 - `assets/onnx`, `assets/mxq`: production 모델
+- `assets/mxq_final12`: 최종 비교 대상 16개 MXQ
 - `results/`: 생성된 벤치마크 결과
 - `docs/`: 상세 구현 및 실행 문서
 

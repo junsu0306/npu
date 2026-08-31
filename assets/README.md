@@ -4,6 +4,7 @@
 |---|---|
 | `onnx/` | production ONNX |
 | `mxq/` | production MXQ |
+| `mxq_final12/` | Tiny/Small 30%/50% 최종 비교 MXQ 16개 |
 | `calibration_data/` | calibration 원본 이미지 |
 | `calib_hwc*/` | 컴파일 입력용 HWC tensor; Git 제외 |
 

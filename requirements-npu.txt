@@ -1,6 +1,9 @@
 # Generic Python dependencies. qbruntime is installed with the Mobilint SDK.
 mblt-model-zoo
+mblt-tracker
+onnx
 opencv-python-headless
 numpy
+pandas>=2.2
 psutil
 torch
