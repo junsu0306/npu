@@ -58,6 +58,12 @@ VARIANT_ORDER = {
     "patch_slimming_stage369_relaxed": 2,
     "reduced": 3,
 }
+VARIANT_LABELS = {
+    "baseline": "Baseline",
+    "patch_slimming": "Patch Slimming",
+    "patch_slimming_stage369_relaxed": "Patch Slimming Relaxed",
+    "reduced": "Reduced",
+}
 
 
 @dataclass
@@ -809,14 +815,28 @@ SUMMARY_FIELDS = [
     "latency_p99_ms",
     "inference_fps",
     "end_to_end_fps",
+    "preprocess_mean_ms",
+    "process_rss_start_mb",
     "process_rss_peak_mb",
     "process_rss_delta_mb",
+    "process_uss_peak_mb",
+    "process_pss_peak_mb",
+    "npu_memory_avg_mb",
+    "npu_memory_p99_mb",
     "npu_memory_peak_mb",
     "npu_util_avg_pct",
+    "npu_util_p99_pct",
+    "npu_util_max_pct",
     "power_avg_w",
+    "power_p99_w",
     "power_max_w",
+    "npu_core_power_avg_w",
+    "npu_core_power_max_w",
+    "temperature_avg_c",
+    "temperature_p99_c",
     "temperature_max_c",
     "parameters_m",
+    "parameter_reduction_pct",
     "major_gflops_per_image",
     "flops_reduction_pct",
     "mxq_size_mb",
@@ -838,19 +858,41 @@ def summary_row(result: dict[str, Any]) -> dict[str, Any]:
         "latency_p99_ms": metric_value(result, "latency_ms", "p99"),
         "inference_fps": result.get("inference_fps"),
         "end_to_end_fps": result.get("end_to_end_fps"),
+        "preprocess_mean_ms": metric_value(result, "preprocess_ms", "mean"),
+        "process_rss_start_mb": metric_value(
+            result, "process_memory", "rss_start_mb"
+        ),
         "process_rss_peak_mb": metric_value(result, "process_memory", "rss_peak_mb"),
         "process_rss_delta_mb": metric_value(
             result, "process_memory", "rss_peak_delta_mb"
         ),
+        "process_uss_peak_mb": metric_value(
+            result, "process_memory", "uss_peak_mb"
+        ),
+        "process_pss_peak_mb": metric_value(
+            result, "process_memory", "pss_peak_mb"
+        ),
+        "npu_memory_avg_mb": npu_metric(result, "avg_memory_used_mb"),
+        "npu_memory_p99_mb": npu_metric(result, "p99_memory_used_mb"),
         "npu_memory_peak_mb": npu_metric(result, "max_memory_used_mb"),
         "npu_util_avg_pct": npu_metric(result, "avg_utilization_pct"),
+        "npu_util_p99_pct": npu_metric(result, "p99_utilization_pct"),
+        "npu_util_max_pct": npu_metric(result, "max_utilization_pct"),
         "power_avg_w": npu_metric(result, "avg_power_w"),
+        "power_p99_w": npu_metric(result, "p99_power_w"),
         "power_max_w": npu_metric(result, "max_power_w"),
+        "npu_core_power_avg_w": npu_metric(result, "avg_npu_power_w"),
+        "npu_core_power_max_w": npu_metric(result, "max_npu_power_w"),
+        "temperature_avg_c": npu_metric(result, "avg_temperature_c"),
+        "temperature_p99_c": npu_metric(result, "p99_temperature_c"),
         "temperature_max_c": npu_metric(result, "max_temperature_c"),
         "parameters_m": (
             metric_value(result, "static_analysis", "parameter_count") / 1e6
             if metric_value(result, "static_analysis", "parameter_count")
             else None
+        ),
+        "parameter_reduction_pct": metric_value(
+            result, "static_analysis", "parameter_reduction_pct"
         ),
         "major_gflops_per_image": metric_value(
             result, "static_analysis", "major_gflops_per_image"
@@ -923,166 +965,322 @@ def write_summary_csv(path: Path, results: list[dict[str, Any]]) -> None:
             writer.writerow(summary_row(result))
 
 
+def percent(value: Any, digits: int = 1) -> str:
+    return fmt(value, digits) + "%" if value is not None else "-"
+
+
+def multiple(value: Any, digits: int = 2) -> str:
+    return fmt(value, digits) + "x" if value is not None else "-"
+
+
+def report_rows(
+    results: list[dict[str, Any]], comparisons: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    baselines = {
+        result["group"]: summary_row(result)
+        for result in results
+        if result.get("variant") == "baseline"
+    }
+    comparison_by_model = {item["model"]: item for item in comparisons}
+    rows = []
+    for result in results:
+        row = summary_row(result)
+        baseline = baselines.get(result.get("group"))
+        comparison = comparison_by_model.get(result.get("name"), {})
+        row["model"] = VARIANT_LABELS.get(
+            result.get("variant"), result.get("variant", "unknown")
+        )
+        row["top1_delta_pct_point"] = (
+            0.0
+            if result.get("variant") == "baseline"
+            else comparison.get("top1_delta_pct_point")
+        )
+        row["top1_agreement_pct"] = (
+            100.0
+            if result.get("variant") == "baseline"
+            else comparison.get("top1_agreement_pct")
+        )
+        row["latency_speedup_x"] = None
+        row["mxq_reduction_pct"] = None
+        row["npu_memory_reduction_pct"] = None
+        if baseline:
+            if baseline.get("latency_mean_ms") and row.get("latency_mean_ms"):
+                row["latency_speedup_x"] = (
+                    baseline["latency_mean_ms"] / row["latency_mean_ms"]
+                )
+            if baseline.get("mxq_size_mb") and row.get("mxq_size_mb"):
+                row["mxq_reduction_pct"] = 100.0 * (
+                    baseline["mxq_size_mb"] - row["mxq_size_mb"]
+                ) / baseline["mxq_size_mb"]
+            if baseline.get("npu_memory_peak_mb") and row.get("npu_memory_peak_mb"):
+                row["npu_memory_reduction_pct"] = 100.0 * (
+                    baseline["npu_memory_peak_mb"] - row["npu_memory_peak_mb"]
+                ) / baseline["npu_memory_peak_mb"]
+        rows.append(row)
+    return rows
+
+
 def write_summary_markdown(
     path: Path,
     run: dict[str, Any],
     results: list[dict[str, Any]],
     comparisons: list[dict[str, Any]],
 ) -> None:
-    quality_headers = [
-        "Group",
-        "Variant",
-        "Status",
-        "N",
-        "Errors",
-        "Top-1",
-        "Top-5",
-        "Params M",
-        "GFLOPs*",
-        "FLOPs red.",
-        "MXQ MB",
-    ]
-    lines = [
-        "# Final NPU benchmark summary",
-        "",
-        "- Status: `%s`" % run["status"],
-        "- Dataset: `%s` (%s images)" % (run["val_dir"], run["num_samples"]),
-        "- Preprocess/core: `%s` / `%s`" % (run["preprocess"], run["core_mode"]),
-        "- Sample manifest SHA-256: `%s`" % run["sample_manifest_sha256"],
-        "",
-        "## Results",
-        "",
-        "### Accuracy and model compute",
-        "",
-        "| " + " | ".join(quality_headers) + " |",
-        "|" + "|".join("---" for _ in quality_headers) + "|",
-    ]
-    for result in results:
-        row = summary_row(result)
-        values = [
-            row["group"],
-            row["variant"],
-            row["status"],
-            fmt(row["images"], 0),
-            fmt(row["errors"], 0),
-            fmt(row["top1_pct"], 3),
-            fmt(row["top5_pct"], 3),
-            fmt(row["parameters_m"], 3),
-            fmt(row["major_gflops_per_image"], 3),
-            (
-                fmt(row["flops_reduction_pct"], 1) + "%"
-                if row["flops_reduction_pct"] is not None
-                else "-"
-            ),
-            fmt(row["mxq_size_mb"], 1),
-        ]
-        lines.append("| " + " | ".join(str(value) for value in values) + " |")
+    rows = report_rows(results, comparisons)
+    completed = sum(row.get("status") == "ok" for row in rows)
+    total_errors = sum(row.get("errors") or 0 for row in rows)
+    telemetry_ok = sum(
+        result.get("npu_telemetry", {}).get("status") == "ok"
+        for result in results
+    )
+    passed = (
+        run.get("status") == "complete"
+        and completed == len(results)
+        and total_errors == 0
+    )
+    wall_hours = sum(result.get("evaluation_wall_seconds", 0) for result in results) / 3600.0
+    environment = run.get("environment", {})
+    commit = environment.get("git_commit")
+    timestamp = environment.get("timestamp", "-")
 
-    runtime_headers = [
-        "Group",
-        "Variant",
-        "Avg ms",
-        "P50",
-        "P95",
-        "P99",
-        "Infer FPS",
-        "E2E FPS",
-        "RSS peak MB",
-        "RSS delta MB",
-        "NPU mem MB",
-        "NPU util %",
-        "Avg/Max W",
-        "Max temp C",
+    lines = [
+        "# 최종 NPU 벤치마크 결과",
+        "",
+        "## 평가 개요",
+        "",
+        "| 항목 | 결과 |",
+        "|---|---|",
+        "| 최종 상태 | **%s** (`%s`) |"
+        % ("PASS" if passed else "CHECK", run.get("status", "unknown")),
+        "| 평가 모델 | %d개 중 %d개 정상, 오류 이미지 %d장 |"
+        % (len(results), completed, total_errors),
+        "| 데이터셋 | ImageNet validation %s장/모델 (`%s`) |"
+        % (run.get("num_samples"), run.get("val_dir")),
+        "| 총 추론 수 | %s회 |" % (run.get("num_samples", 0) * len(results)),
+        "| 전처리 / 코어 | `%s` / `%s`, device %s |"
+        % (run.get("preprocess"), run.get("core_mode"), run.get("device_id")),
+        "| Warmup | 모델당 %s회 |" % run.get("warmup_runs"),
+        "| NPU telemetry | %d/%d 모델 정상 수집 |" % (telemetry_ok, len(results)),
+        "| 평가 시간 합계 | %.2f시간 |" % wall_hours,
+        "| 실행 시각 / Git | `%s` / `%s` |"
+        % (timestamp, commit[:12] if commit else "-"),
+        "| 샘플 SHA-256 | `%s` |" % run.get("sample_manifest_sha256", "-"),
+        "",
+        "## 핵심 비교",
+        "",
+        "압축 모델 중 정확도가 가장 높은 모델, 가장 빠른 모델, NPU 메모리가 가장 적은 모델을 그룹별로 요약했다.",
+        "",
+        "| Group | Baseline Top-1 | 최고 압축 정확도 | 가장 빠른 압축 모델 | 최저 NPU 메모리 |",
+        "|---|---:|---|---|---|",
     ]
+    groups = []
+    for row in rows:
+        if row["group"] not in groups:
+            groups.append(row["group"])
+    for group in groups:
+        group_rows = [row for row in rows if row["group"] == group]
+        baseline = next((row for row in group_rows if row["variant"] == "baseline"), None)
+        compressed = [
+            row
+            for row in group_rows
+            if row["variant"] != "baseline" and row["status"] == "ok"
+        ]
+        if not baseline or not compressed:
+            continue
+        best_accuracy = max(compressed, key=lambda row: row["top1_pct"] or -math.inf)
+        fastest = min(
+            compressed, key=lambda row: row["latency_mean_ms"] or math.inf
+        )
+        lowest_memory = min(
+            compressed, key=lambda row: row["npu_memory_peak_mb"] or math.inf
+        )
+        lines.append(
+            "| %s | %s%% | %s: %s%% (%s pp) | %s: %s ms (%s) | %s: %s/%s MB (%s) |"
+            % (
+                group,
+                fmt(baseline["top1_pct"], 3),
+                best_accuracy["model"],
+                fmt(best_accuracy["top1_pct"], 3),
+                fmt(best_accuracy["top1_delta_pct_point"], 3),
+                fastest["model"],
+                fmt(fastest["latency_mean_ms"], 3),
+                multiple(fastest["latency_speedup_x"], 2),
+                lowest_memory["model"],
+                fmt(lowest_memory["npu_memory_avg_mb"], 1),
+                fmt(lowest_memory["npu_memory_peak_mb"], 1),
+                percent(lowest_memory["npu_memory_reduction_pct"], 1),
+            )
+        )
+
     lines.extend(
         [
             "",
-            "### Runtime and resources",
+            "## 정확도 및 모델 압축",
             "",
-            "| " + " | ".join(runtime_headers) + " |",
-            "|" + "|".join("---" for _ in runtime_headers) + "|",
+            "| Group | Model | 상태 | Top-1 | Δ Top-1 | Top-5 | 예측 일치율 | Params M | Params 감소 | GFLOPs* | FLOPs 감소 | MXQ MB | MXQ 감소 |",
+            "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
-    for result in results:
-        row = summary_row(result)
-        values = [
-            row["group"],
-            row["variant"],
-            fmt(row["latency_mean_ms"], 3),
-            fmt(row["latency_p50_ms"], 3),
-            fmt(row["latency_p95_ms"], 3),
-            fmt(row["latency_p99_ms"], 3),
-            fmt(row["inference_fps"], 2),
-            fmt(row["end_to_end_fps"], 2),
-            fmt(row["process_rss_peak_mb"], 1),
-            fmt(row["process_rss_delta_mb"], 1),
-            fmt(row["npu_memory_peak_mb"], 1),
-            fmt(row["npu_util_avg_pct"], 1),
-            "%s/%s" % (fmt(row["power_avg_w"], 2), fmt(row["power_max_w"], 2)),
-            fmt(row["temperature_max_c"], 1),
-        ]
-        lines.append("| " + " | ".join(str(value) for value in values) + " |")
-
-    if comparisons:
-        lines.extend(
-            [
-                "",
-                "## Baseline comparisons",
-                "",
-                "| Group | Model | Top-1 delta (pp) | Prediction agreement |",
-                "|---|---|---:|---:|",
-            ]
+    for row in rows:
+        lines.append(
+            "| %s | %s | %s | %s%% | %s | %s%% | %s | %s | %s | %s | %s | %s | %s |"
+            % (
+                row["group"], row["model"], row["status"],
+                fmt(row["top1_pct"], 3),
+                (fmt(row["top1_delta_pct_point"], 3) + " pp")
+                if row["top1_delta_pct_point"] is not None else "-",
+                fmt(row["top5_pct"], 3),
+                percent(row["top1_agreement_pct"], 3),
+                fmt(row["parameters_m"], 3),
+                percent(row["parameter_reduction_pct"], 1),
+                fmt(row["major_gflops_per_image"], 3),
+                percent(row["flops_reduction_pct"], 1),
+                fmt(row["mxq_size_mb"], 1),
+                percent(row["mxq_reduction_pct"], 1),
+            )
         )
-        for item in comparisons:
-            lines.append(
-                "| %s | %s | %s | %s%% |"
-                % (
-                    item["group"],
-                    item["model"],
-                    fmt(item["top1_delta_pct_point"], 3),
-                    fmt(item["top1_agreement_pct"], 3),
-                )
-            )
-
-    failures = [result for result in results if result.get("status") == "failed"]
-    telemetry_warnings = []
-    for result in results:
-        telemetry = result.get("npu_telemetry", {})
-        if telemetry.get("status") in ("unavailable", "error", "no_samples"):
-            telemetry_warnings.append(
-                "%s: %s (%s)"
-                % (
-                    result["name"],
-                    telemetry.get("status"),
-                    telemetry.get("reason", "no metric samples"),
-                )
-            )
-    if failures or telemetry_warnings or run.get("preflight_error"):
-        lines.extend(["", "## Warnings and failures", ""])
-        if run.get("preflight_error"):
-            lines.append(
-                "- NPU preflight: `%s`" % markdown_text(run["preflight_error"])
-            )
-        for result in failures:
-            lines.append(
-                "- `%s`: `%s`"
-                % (result["name"], markdown_text(result.get("error")))
-            )
-        for warning in telemetry_warnings:
-            lines.append("- NPU telemetry `%s`" % markdown_text(warning))
 
     lines.extend(
         [
             "",
-            "## Interpretation notes",
+            "## 추론 성능",
             "",
-            "- `GFLOPs*` is a static ONNX Conv/MatMul/Gemm estimate per image "
-            "(1 MAC = 2 FLOPs). It is not a measured NPU operation count.",
-            "- NPU memory/power/utilization/temperature are populated only when "
-            "`mblt_tracker` and `mobilint-cli status` return samples.",
-            "- `Avg ms` and latency percentiles time only `model.infer`; end-to-end "
-            "throughput including image decode/preprocessing is retained in CSV/JSON.",
-            "- A final run is valid only when every row has `status=ok` and `errors=0`.",
+            "`Inference`는 `model.infer()`만, `E2E`는 이미지 로딩과 전처리를 포함한다.",
+            "",
+            "| Group | Model | 평균 ms | P50 | P95 | P99 | Inference FPS | Baseline 대비 | E2E FPS | 전처리 평균 ms |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in rows:
+        lines.append(
+            "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |"
+            % (
+                row["group"], row["model"],
+                fmt(row["latency_mean_ms"], 3),
+                fmt(row["latency_p50_ms"], 3),
+                fmt(row["latency_p95_ms"], 3),
+                fmt(row["latency_p99_ms"], 3),
+                fmt(row["inference_fps"], 2),
+                multiple(row["latency_speedup_x"], 2),
+                fmt(row["end_to_end_fps"], 2),
+                fmt(row["preprocess_mean_ms"], 3),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## NPU 메모리 및 사용률",
+            "",
+            "| Group | Model | 메모리 평균 MB | P99 MB | 피크 MB | 피크 감소 | 사용률 평균 | P99 | 최대 | Samples |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for result, row in zip(results, rows):
+        samples = metric_value(result, "npu_telemetry", "sample_count")
+        lines.append(
+            "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |"
+            % (
+                row["group"], row["model"],
+                fmt(row["npu_memory_avg_mb"], 1),
+                fmt(row["npu_memory_p99_mb"], 1),
+                fmt(row["npu_memory_peak_mb"], 1),
+                percent(row["npu_memory_reduction_pct"], 1),
+                percent(row["npu_util_avg_pct"], 1),
+                percent(row["npu_util_p99_pct"], 1),
+                percent(row["npu_util_max_pct"], 1),
+                fmt(samples, 0),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## NPU 전력 및 온도",
+            "",
+            "Total power는 보드 전체, NPU core power는 NPU 코어 전력이다.",
+            "",
+            "| Group | Model | Total W 평균 | P99 | 최대 | NPU core W 평균 | 최대 | 온도 °C 평균 | P99 | 최대 |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in rows:
+        lines.append(
+            "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |"
+            % (
+                row["group"], row["model"],
+                fmt(row["power_avg_w"], 2),
+                fmt(row["power_p99_w"], 2),
+                fmt(row["power_max_w"], 2),
+                fmt(row["npu_core_power_avg_w"], 2),
+                fmt(row["npu_core_power_max_w"], 2),
+                fmt(row["temperature_avg_c"], 1),
+                fmt(row["temperature_p99_c"], 1),
+                fmt(row["temperature_max_c"], 1),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## 호스트 프로세스 메모리",
+            "",
+            "| Group | Model | RSS 시작 MB | RSS 피크 MB | RSS 증가 MB | USS 피크 MB | PSS 피크 MB |",
+            "|---|---|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for row in rows:
+        lines.append(
+            "| %s | %s | %s | %s | %s | %s | %s |"
+            % (
+                row["group"], row["model"],
+                fmt(row["process_rss_start_mb"], 1),
+                fmt(row["process_rss_peak_mb"], 1),
+                fmt(row["process_rss_delta_mb"], 1),
+                fmt(row["process_uss_peak_mb"], 1),
+                fmt(row["process_pss_peak_mb"], 1),
+            )
+        )
+
+    failures = [result for result in results if result.get("status") != "ok"]
+    telemetry_failures = [
+        result for result in results
+        if result.get("npu_telemetry", {}).get("status") != "ok"
+    ]
+    if failures or telemetry_failures or run.get("preflight_error"):
+        lines.extend(["", "## 검증 이슈", ""])
+        if run.get("preflight_error"):
+            lines.append(
+                "- NPU preflight 실패: `%s`"
+                % markdown_text(run["preflight_error"])
+            )
+        if failures:
+            lines.append(
+                "- 정상 완료되지 않은 모델: %d개 (`benchmark.json`의 `error` 확인)"
+                % len(failures)
+            )
+        if telemetry_failures:
+            reasons = sorted(
+                {
+                    result.get("npu_telemetry", {}).get("reason")
+                    or "metric samples unavailable"
+                    for result in telemetry_failures
+                }
+            )
+            lines.append(
+                "- NPU telemetry 미수집: %d개 모델 — `%s`"
+                % (len(telemetry_failures), markdown_text("; ".join(reasons)))
+            )
+
+    lines.extend(
+        [
+            "",
+            "## 측정 기준",
+            "",
+            "- `GFLOPs*`는 ONNX Conv/MatMul/Gemm 정적 shape로 계산했으며 `1 MAC = 2 FLOPs`를 적용했다. Elementwise, normalization, activation, softmax와 컴파일러 fusion/tiling은 포함하지 않는다.",
+            "- NPU 메모리·전력·사용률·온도는 `mblt_tracker`가 `mobilint-cli status`를 주기적으로 관측한 값이다. 메모리 피크는 관측 구간의 최대 할당량이며 연산 중 초단기 내부 activation peak와는 다르다.",
+            "- 정확도 비교는 모든 모델에 동일한 이미지 목록, label, `timm` 전처리, Global8 조건을 사용했다.",
+            "- 상세 원본 지표와 오류 정보는 같은 폴더의 `benchmark.json`, 분석용 평탄화 지표는 `summary.csv`에 저장된다.",
             "",
         ]
     )

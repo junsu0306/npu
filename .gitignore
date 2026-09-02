@@ -17,4 +17,6 @@ compile/**/calib_hwc.txt
 compile/**/calib_chw.txt
 
 # NPU benchmark outputs
-results/
+results/*
+!results/final_benchmark/
+!results/final_benchmark/**
