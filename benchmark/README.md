@@ -12,6 +12,7 @@
 
 | 파일 | 실행 방식 | 용도 |
 |---|---|---|
+| `memory/profile_memory.py` | isolated direct `qbruntime` | Server_Compression과 동일 입력으로 최종 12개 MXQ 메모리 측정·비교용 JSON/CSV |
 | `final/eval_final_models.py` | direct `qbruntime` | 최종 MXQ 전체 ImageNet 정확도·속도·메모리·전력·FLOPs 통합 평가 |
 | `model_zoo/run_smoke_test.py` | Model Zoo wrapper | 이미지 1장으로 로딩·속도 빠른 확인 |
 | `model_zoo/run_model_zoo_benchmark.py` | Model Zoo wrapper | ImageNet Top-1/Top-5, latency, CPU/NPU 메모리·전력 |
@@ -20,6 +21,32 @@
 | `runtime/test_npu.py` | direct `qbruntime` | calibration 이미지 Top-5 점검 |
 | `runtime/infer_resnet50.py` | direct `qbruntime` | ResNet50 최소 실행 예시 |
 | `onnx/infer_onnx.py` | ONNX Runtime | MXQ 변환 전 CPU reference 추론 |
+
+## 서버와 대응하는 메모리 전용 측정
+
+ImageNet 없이 고정 random FP32 입력(batch 1, HWC 224×224×3)으로 baseline/reduced/
+paper Patch Slimming 12개를 측정한다. 완화형은 자동 선택하지 않는다. 모델별 별도
+프로세스에서 실행하며, warmup 10회·속도 측정 50회 후 NPU telemetry 수집을 위해
+별도로 5초 이상 연속 추론한다. `mblt_tracker`, `mobilint-cli`, `qbruntime`이 필요하다.
+
+```bash
+python3 benchmark/memory/profile_memory.py --models-dir assets/mxq_final12 --dry-run
+python3 benchmark/memory/profile_memory.py \
+  --models-dir assets/mxq_final12 --core-mode global8 --device-id 0 \
+  --warmups 10 --runs 50 --memory-seconds 5 \
+  --output-dir results/memory_profile/server_match_20260909
+```
+
+서버에서 저장한 입력을 사용할 때는 `--input-npy /path/to/input_nhwc_fp32.npy`를 추가한다.
+생략해도 양쪽 기본 생성 방식(seed 2022)은 같고, 결과의 입력 SHA-256으로 확인한다.
+한 모델만 측정하려면 `--model-id tiny30__reduced`를 추가한다.
+기존 결과를 보존하도록 출력 폴더는 새 경로를 사용한다.
+
+`summary.json`, `summary.csv`, 모델별 JSON·로그가 생성된다. NPU peak/idle 메모리는
+SDK가 보고하는 MB 원값이며 CUDA MiB로 변환하지 않는다. 장치 전체 telemetry이므로
+다른 NPU 작업이 없는 상태에서 실행한다. Host RSS/USS는 별도 MiB 지표다.
+NPU 내부 activation은 runtime에서 직접 제공하지 않으므로 실측값으로 만들지 않는다.
+통합 표 생성 명령은 `Server_Compression/docs/MEMORY_PROFILING_SERVER_NPU_20260909.md`에 있다.
 
 ## 최종 모델 종합 평가
 
