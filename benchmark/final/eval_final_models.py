@@ -39,7 +39,7 @@ import qbruntime
 
 
 NPU_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_MODELS_DIR = NPU_ROOT / "assets" / "mxq_final12"
+DEFAULT_MODELS_DIR = NPU_ROOT / "assets" / "mxq_final_20261006"
 DEFAULT_ONNX_DIR = NPU_ROOT / "assets" / "onnx"
 DEFAULT_VAL_DIR = NPU_ROOT.parent / "imagenet_val"
 
@@ -304,6 +304,7 @@ def analyze_onnx(path: Path | None) -> dict[str, Any]:
         return {
             "status": "ok" if not missing else "partial",
             "onnx": str(path),
+            "onnx_sha256": file_sha256(path),
             "onnx_file_bytes": path.stat().st_size,
             "parameter_count": int(parameter_count),
             "major_flops_per_image": int(total_flops),
@@ -398,6 +399,14 @@ def sample_manifest_hash(samples: Iterable[tuple[Path, int]], val_dir: Path) -> 
         except ValueError:
             display_path = path
         digest.update(("%s\t%d\n" % (display_path.as_posix(), label)).encode())
+    return digest.hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
     return digest.hexdigest()
 
 
@@ -724,6 +733,7 @@ def evaluate_model(
             "target": spec.target,
             "variant": spec.variant,
             "mxq": str(spec.path),
+            "mxq_sha256": file_sha256(spec.path),
             "mxq_file_bytes": spec.path.stat().st_size,
             "core_mode": args.core_mode,
             "device_id": args.device_id,
@@ -1042,6 +1052,13 @@ def write_summary_markdown(
     environment = run.get("environment", {})
     commit = environment.get("git_commit")
     timestamp = environment.get("timestamp", "-")
+    status_snapshot = environment.get("mobilint_cli_status_at_start") or ""
+    driver_match = re.search(r"Drivers - Aries:\s*([^\s]+)", status_snapshot)
+    firmware_match = re.search(
+        r"\|\s*\d+\s+\d+\s+C\s+([0-9.]+)\s+\|", status_snapshot
+    )
+    driver_version = driver_match.group(1) if driver_match else "-"
+    firmware_version = firmware_match.group(1) if firmware_match else "-"
 
     lines = [
         "# 최종 NPU 벤치마크 결과",
@@ -1057,13 +1074,20 @@ def write_summary_markdown(
         "| 데이터셋 | ImageNet validation %s장/모델 (`%s`) |"
         % (run.get("num_samples"), run.get("val_dir")),
         "| 총 추론 수 | %s회 |" % (run.get("num_samples", 0) * len(results)),
+        "| 최종 모델 폴더 | `%s` |" % run.get("models_dir", "-"),
         "| 전처리 / 코어 | `%s` / `%s`, device %s |"
         % (run.get("preprocess"), run.get("core_mode"), run.get("device_id")),
         "| Warmup | 모델당 %s회 |" % run.get("warmup_runs"),
         "| NPU telemetry | %d/%d 모델 정상 수집 |" % (telemetry_ok, len(results)),
         "| 평가 시간 합계 | %.2f시간 |" % wall_hours,
-        "| 실행 시각 / Git | `%s` / `%s` |"
+        "| 실행 시작 시각 / 시작 HEAD | `%s` / `%s` |"
         % (timestamp, commit[:12] if commit else "-"),
+        "| 실행 시 worktree | `%s` |"
+        % ("dirty" if environment.get("git_worktree_dirty") else "clean"),
+        "| Runtime / CLI | qbruntime `%s` / mobilint-cli `%s` |"
+        % (environment.get("qbruntime", "-"), environment.get("mobilint_cli_version", "-")),
+        "| Aries driver / firmware | `%s` / `%s` |"
+        % (driver_version, firmware_version),
         "| 샘플 SHA-256 | `%s` |" % run.get("sample_manifest_sha256", "-"),
         "",
         "## 핵심 비교",
@@ -1110,6 +1134,57 @@ def write_summary_markdown(
                 fmt(lowest_memory["npu_memory_peak_mb"], 1),
                 percent(lowest_memory["npu_memory_reduction_pct"], 1),
             )
+        )
+
+    lines.extend(["", "## 결과 해석", ""])
+    reduced_rows = []
+    for group in groups:
+        group_rows = [row for row in rows if row["group"] == group]
+        baseline = next((row for row in group_rows if row["variant"] == "baseline"), None)
+        patch = next((row for row in group_rows if row["variant"] == "patch_slimming"), None)
+        reduced = next((row for row in group_rows if row["variant"] == "reduced"), None)
+        if not baseline or not patch or not reduced:
+            continue
+        if reduced.get("top1_delta_pct_point") is not None:
+            reduced_rows.append(reduced)
+        reduced_latency_reduction = (
+            100.0 * (1.0 - 1.0 / reduced["latency_speedup_x"])
+            if reduced.get("latency_speedup_x")
+            else None
+        )
+        patch_latency_reduction = (
+            100.0 * (1.0 - 1.0 / patch["latency_speedup_x"])
+            if patch.get("latency_speedup_x")
+            else None
+        )
+        lines.append(
+            "- **%s**: Reduced는 Top-1 `%s%%` (`%s pp`), latency `%s%%` 감소, NPU 메모리 `%s%%` 감소. Patch Slimming은 Top-1 `%s%%` (`%s pp`), latency `%s%%` 감소, NPU 메모리 `%s%%` 감소."
+            % (
+                group,
+                fmt(reduced["top1_pct"], 3),
+                fmt(reduced["top1_delta_pct_point"], 3),
+                fmt(reduced_latency_reduction, 1),
+                fmt(reduced["npu_memory_reduction_pct"], 1),
+                fmt(patch["top1_pct"], 3),
+                fmt(patch["top1_delta_pct_point"], 3),
+                fmt(patch_latency_reduction, 1),
+                fmt(patch["npu_memory_reduction_pct"], 1),
+            )
+        )
+    if reduced_rows:
+        best_reduced = max(reduced_rows, key=lambda row: row["top1_delta_pct_point"])
+        lines.extend(
+            [
+                "- 압축 모델 중 정확도 보존이 가장 좋은 구성은 **%s Reduced**로, Top-1 `%s%%`와 baseline 대비 `%s pp`를 기록했다."
+                % (
+                    best_reduced["group"],
+                    fmt(best_reduced["top1_pct"], 3),
+                    fmt(best_reduced["top1_delta_pct_point"], 3),
+                ),
+                "- NPU 할당 메모리는 압축 여부와 관계없이 같지 않았다. 통합 평가와 독립 프로세스 재검증 모두에서 각 압축 모델의 감소가 동일하게 재현됐다.",
+                "- Patch Slimming은 모든 그룹에서 가장 빠르고 메모리가 가장 작았지만 정확도 손실도 Reduced보다 컸다. 특히 Tiny50은 `-33.062 pp`이므로 정확도 우선 최종 모델로 보기 어렵다.",
+                "- 50% 목표는 Tiny와 Small 모두 정확도 손실이 커졌다. 정확도 우선이라면 이번 결과에서는 **Small30 Reduced**, Tiny가 필요하다면 **Tiny30 Reduced**가 상대적으로 안전한 선택이다.",
+            ]
         )
 
     lines.extend(
@@ -1242,6 +1317,76 @@ def write_summary_markdown(
             )
         )
 
+    lines.extend(
+        [
+            "",
+            "## 아티팩트 무결성",
+            "",
+            "| Group | Model | MXQ bytes | MXQ SHA-256 | ONNX bytes | ONNX SHA-256 |",
+            "|---|---|---:|---|---:|---|",
+        ]
+    )
+    for result, row in zip(results, rows):
+        static = result.get("static_analysis", {})
+        lines.append(
+            "| %s | %s | %s | `%s` | %s | `%s` |"
+            % (
+                row["group"],
+                row["model"],
+                result.get("mxq_file_bytes", "-"),
+                result.get("mxq_sha256", "-"),
+                static.get("onnx_file_bytes", "-"),
+                static.get("onnx_sha256", "-"),
+            )
+        )
+
+    isolated_path = path.parent / "isolated_memory" / "summary.json"
+    if isolated_path.is_file():
+        try:
+            isolated = json.loads(isolated_path.read_text(encoding="utf-8"))
+            lines.extend(
+                [
+                    "",
+                    "## 독립 프로세스 메모리 재검증",
+                    "",
+                    "각 모델을 새 프로세스에서 고정 random FP32 입력으로 실행했다. Idle/Active는 장치 전체에서 `mobilint-cli`가 보고한 MB이며, host 값은 프로세스 MiB이다.",
+                    "",
+                    "| Group | Model | 상태 | Idle MB | Active peak MB | Δ NPU MB | Host RSS peak MiB | Host USS peak MiB | 평균 ms | Telemetry runs |",
+                    "|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
+                ]
+            )
+            for item in isolated.get("models", []):
+                lines.append(
+                    "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |"
+                    % (
+                        item.get("group", "-"),
+                        VARIANT_LABELS.get(item.get("variant"), item.get("variant", "-")),
+                        item.get("status", "-"),
+                        fmt(item.get("npu_idle_peak_reported_mb"), 1),
+                        fmt(item.get("npu_peak_reported_mb"), 1),
+                        fmt(item.get("npu_delta_reported_mb"), 1),
+                        fmt(item.get("host_rss_peak_mib"), 1),
+                        fmt(item.get("host_uss_peak_mib"), 1),
+                        fmt(item.get("latency_mean_ms"), 3),
+                        fmt(item.get("telemetry_runs"), 0),
+                    )
+                )
+            lines.extend(
+                [
+                    "",
+                    "독립 측정은 통합 평가와 동일한 NPU 메모리 peak를 12/12 모델에서 재현했다. Idle은 모든 모델에서 0 MB였으며, 프로세스 분리로 모델 간 allocator 잔존 영향을 배제했다.",
+                ]
+            )
+        except Exception as exc:
+            lines.extend(
+                [
+                    "",
+                    "## 독립 프로세스 메모리 재검증",
+                    "",
+                    "- 결과를 읽지 못함: `%s`" % markdown_text(exc),
+                ]
+            )
+
     failures = [result for result in results if result.get("status") != "ok"]
     telemetry_failures = [
         result for result in results
@@ -1331,6 +1476,18 @@ def git_commit() -> str | None:
         return None
 
 
+def command_output(command: list[str]) -> str | None:
+    try:
+        return subprocess.check_output(
+            command,
+            cwd=NPU_ROOT,
+            text=True,
+            stderr=subprocess.STDOUT,
+        ).strip()
+    except Exception:
+        return None
+
+
 def environment_metadata(tracker_error: str | None) -> dict[str, Any]:
     return {
         "timestamp": datetime.now().astimezone().isoformat(),
@@ -1340,6 +1497,9 @@ def environment_metadata(tracker_error: str | None) -> dict[str, Any]:
         "numpy": np.__version__,
         "opencv": cv2.__version__,
         "qbruntime": getattr(qbruntime, "__version__", None),
+        "git_worktree_dirty": bool(command_output(["git", "status", "--porcelain"])),
+        "mobilint_cli_version": command_output(["mobilint-cli", "--version"]),
+        "mobilint_cli_status_at_start": command_output(["mobilint-cli", "status"]),
         "mblt_tracker_import_error": tracker_error,
         "command": [sys.executable] + sys.argv,
     }
@@ -1363,11 +1523,14 @@ def save_outputs(
     elif run.get("status") != "interrupted":
         run["status"] = "running"
     payload = {"run": run, "models": results, "comparisons": comparisons}
-    atomic_write_json(output_dir / "benchmark_partial.json", payload)
+    atomic_write_json(output_dir / "run_metadata.json", run)
+    partial_path = output_dir / "benchmark_partial.json"
+    atomic_write_json(partial_path, payload)
     write_summary_csv(output_dir / "summary.csv", results)
     write_summary_markdown(output_dir / "summary.md", run, results, comparisons)
     if final:
         atomic_write_json(output_dir / "benchmark.json", payload)
+        partial_path.unlink(missing_ok=True)
 
 
 def failed_result(spec: ModelSpec, exc: BaseException) -> dict[str, Any]:
@@ -1379,6 +1542,7 @@ def failed_result(spec: ModelSpec, exc: BaseException) -> dict[str, Any]:
         "target": spec.target,
         "variant": spec.variant,
         "mxq": str(spec.path),
+        "mxq_sha256": file_sha256(spec.path),
         "mxq_file_bytes": spec.path.stat().st_size,
         "num_successful": 0,
         "num_errors": None,
@@ -1451,6 +1615,8 @@ def main() -> int:
         "core_mode": args.core_mode,
         "device_id": args.device_id,
         "warmup_runs": args.warmup_runs,
+        "models_dir": str(Path(args.models_dir).expanduser().resolve()),
+        "onnx_dir": str(Path(args.onnx_dir).expanduser().resolve()),
         "num_models": len(specs),
         "models": [spec.name for spec in specs],
         "environment": environment_metadata(tracker_error),

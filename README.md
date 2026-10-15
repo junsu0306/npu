@@ -10,23 +10,25 @@ ONNX 변환물의 MXQ 컴파일부터 실제 NPU 정확도·성능 측정까지 
 - `benchmark/runtime/`: direct `qbruntime` 실행
 - `benchmark/ablation/`: 코어 모드 등 원인 분리 실험
 - `benchmark/onnx/`: MXQ 이전 ONNX Runtime reference
-- `assets/onnx`, `assets/mxq`: production 모델
-- `assets/mxq_final12`: 최종 비교 대상 16개 MXQ
+- `assets/onnx`: 최종 MXQ와 대응하는 ONNX
+- `assets/mxq_final_20261006`: 최종 비교 대상 12개 MXQ
 - `results/`: 생성된 벤치마크 결과
 - `docs/`: 상세 구현 및 실행 문서
 
 처음 사용하는 경우 [docs/REPOSITORY_LAYOUT.md](docs/REPOSITORY_LAYOUT.md)와
 [benchmark/README.md](benchmark/README.md)를 먼저 확인합니다.
 
-ViT-Tiny의 전처리, calibration, ONNX → MXQ 컴파일, Mobilint Model Zoo
-비교 평가는
-[docs/preprocessing_compile_benchmark_guide_ko.md](docs/preprocessing_compile_benchmark_guide_ko.md)를
-기준으로 실행합니다. AugReg ViT-Tiny는 ImageNet 표준 mean/std가
-아닌 `mean=std=(0.5, 0.5, 0.5)` 전처리가 필요합니다.
+최종 12개 모델의 평가 절차와 결과 파일 설명은
+[benchmark/README.md](benchmark/README.md)를 기준으로 합니다. AugReg ViT는 ImageNet
+표준 mean/std가 아닌 `mean=std=(0.5, 0.5, 0.5)` 전처리가 필요합니다.
 
 Patch Slimming 최종 모델의 identity selector 제거 방법, ONNX export 규칙과 검증 기준은
 [docs/patch_slimming_mxq_diagnosis_ko.md](docs/patch_slimming_mxq_diagnosis_ko.md)에
 정리되어 있습니다.
+
+최종 측정 보고서는
+[`results/final_benchmark/final_20261015/summary.md`](results/final_benchmark/final_20261015/summary.md)에
+생성됩니다.
 
 ## 환경
 

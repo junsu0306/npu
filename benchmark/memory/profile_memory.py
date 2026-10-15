@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Isolated final12 MXQ memory profiling, matching Server_Compression's input protocol."""
+"""Isolated final MXQ memory profiling, matching Server_Compression's input protocol."""
 
 from __future__ import annotations
 
@@ -138,7 +138,9 @@ def run_worker(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--models-dir", type=Path, default=ROOT / "assets/mxq_final12")
+    parser.add_argument(
+        "--models-dir", type=Path, default=ROOT / "assets/mxq_final_20261006"
+    )
     parser.add_argument("--model-id", choices=IDS, action="append")
     parser.add_argument("--core-mode", choices=["single", "multi", "global", "global4", "global8"], default="global8")
     parser.add_argument("--device-id", type=int, default=0)
@@ -197,6 +199,7 @@ def main():
             row.update(status="error", error=f"See {output.with_suffix('.log')}")
         else:
             raw = json.loads(output.read_text())
+            output.with_suffix(".log").unlink(missing_ok=True)
             for key in ("status", "npu_peak_reported_mb", "npu_idle_peak_reported_mb", "npu_delta_reported_mb",
                         "host_rss_peak_mib", "host_uss_peak_mib", "latency_mean_ms", "telemetry_runs"):
                 row[key] = raw.get(key)

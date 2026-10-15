@@ -1,351 +1,118 @@
-# ONNX → MXQ 변환 파이프라인
+# ONNX → MXQ 컴파일 기준
 
-> **중요:** 이 문서의 ImageNet mean/std 전처리는 과거 `legacy` 경로를
-> 기록한다. `timm/vit_tiny_patch16_224.augreg_in21k_ft_in1k`과 현재 Tiny30
-> 모델은 bicubic, crop 0.9, `mean=std=(0.5, 0.5, 0.5)`가 필요하다.
-> 실제 컴파일·벤치마크는
-> [전처리·컴파일·벤치마크 가이드](preprocessing_compile_benchmark_guide_ko.md)를
-> 우선한다.
+MXQ 컴파일은 NPU 실행 서버가 아니라 `qbcompiler`가 설치된 별도 Docker 환경에서
+진행한다. 이 문서는 현재 `compile/mxq/compile_hwc.py`의 실제 설정만 기록한다.
 
-Mobilint **qbcompiler v1.1.0**으로 ONNX 모델을 Aries2 NPU에서 실행 가능한 **MXQ** 형식으로 변환하는 전체 과정을 설명합니다.
+## 입력 계약
 
----
+최종 AugReg ViT 계열의 calibration과 런타임 전처리는 반드시 같아야 한다.
 
-## 파이프라인 개요
+| 항목 | 값 |
+|---|---|
+| 색상 | BGR로 읽은 뒤 RGB 변환 |
+| resize | aspect ratio 유지, short side 249, bicubic |
+| crop | center crop 224×224 |
+| dtype/layout | float32, HWC `(224, 224, 3)` |
+| normalize | `[0,1]` 변환 후 mean `(0.5,0.5,0.5)`, std `(0.5,0.5,0.5)` |
 
-```
-ImageNet 이미지
-    │
-    ▼  [LOCAL] compile/calibration/generate_hwc.py
-HWC .npy 텐서 (assets/calib_hwc/)
-    │
-    ▼  [DOCKER] compile/mxq/compile_hwc.py
-MXQ 파일 (assets/mxq/)
-    │
-    ▼  [NPU] benchmark/runtime/run_npu.py
-추론 결과 + 벤치마크
-```
-
-> **환경 구분**
-> - 캘리브레이션 데이터 생성(`compile/calibration/generate_hwc.py`) → **로컬 (Jetson Orin)**
-> - MXQ 컴파일(`compile/mxq/compile_hwc.py`) → **qbcompiler Docker 컨테이너 내부**
-> - NPU 추론(`benchmark/runtime/run_npu.py`) → **드라이버 설치된 Jetson Orin**
-
----
-
-## 디렉토리 구조
-
-```
-npu/
-├── assets/
-│   ├── calibration_data/       # 원본 ImageNet 이미지 (~38 MB)
-│   ├── calib_hwc/              # 생성된 HWC .npy 텐서 (~578 MB, git 제외)
-│   ├── onnx/
-│   │   └── vit_tiny_prune50_global _reduced.onnx   # 입력 모델 (11 MB)
-│   ├── mxq/                    # 컴파일 출력 (git 제외)
-│   │   └── vit_tiny_prune50_global _reduced_global8.mxq
-│   └── qbcompiler-1.1.0+aries2-py3-none-any.whl
-│
-├── compile/
-│   ├── calibration/
-│   │   └── generate_hwc.py     # Step 2: 로컬에서 실행
-│   ├── onnx/
-│   │   └── fix_outputs.py      # ONNX 출력 정리
-│   └── mxq/
-│       ├── compile_hwc.py      # Step 3: Docker 안에서 실행
-│       ├── calib_hwc.txt       # 자동 생성 파일 목록 (git 제외)
-│       └── compile_resnet50.py # ResNet50 sanity-check용
-│
-├── benchmark/
-│   ├── runtime/run_npu.py      # Step 4: direct qbruntime 추론
-│   ├── runtime/test_npu.py     # calibration 이미지 Top-5 확인
-│   ├── runtime/infer_resnet50.py
-│   ├── onnx/infer_onnx.py      # ONNX Runtime CPU reference
-│   ├── model_zoo/              # 정확도·속도·메모리 통합 벤치마크
-│   └── ablation/               # single/global8 비교
-└── docs/                       # 사용법 및 결과 문서
-```
-
----
-
-## Step 1 — ONNX 모델 준비
-
-변환할 production ONNX 파일을 `assets/onnx/`에 배치합니다.
-`compile/mxq/compile_hwc.py`가 기본적으로 이 디렉터리를 스캔한다. 진단·실험 모델은
-`NPU_ONNX_DIR`과 `NPU_MXQ_DIR`을 지정해 production 파일과 분리한다.
-
-컴파일 전에 ONNX Runtime으로 모델 출력을 검증합니다 (입력 포맷: NCHW):
+ImageNet mean/std를 쓰는 `legacy` profile은 과거 결과 재현 전용이며 최종 모델에
+사용하지 않는다.
 
 ```bash
-python3 benchmark/onnx/infer_onnx.py \
-  --model "assets/onnx/vit_tiny_prune50_global _reduced.onnx" \
-  --image val_example.JPEG
+python3 compile/calibration/generate_hwc.py \
+  --profile timm \
+  --src-dir assets/calibration_data \
+  --output-dir assets/calib_hwc \
+  --n-images 1000
 ```
 
----
-
-## Step 2 — 캘리브레이션 데이터 생성 `[LOCAL]`
-
-Post-Training Quantization(PTQ)은 activation 범위 측정을 위한 캘리브레이션 데이터가 필요합니다. `compile/calibration/generate_hwc.py`는 ImageNet 이미지를 전처리하여 **HWC float32 텐서**로 저장합니다.
+생성 후 아래를 확인한다.
 
 ```bash
-cd /home/airlab_compression/npu
-source aries_env/bin/activate
-python3 compile/calibration/generate_hwc.py
+python3 - <<'PY'
+import json
+import numpy as np
+from pathlib import Path
+
+root = Path("assets/calib_hwc")
+files = sorted(root.glob("*.npy"))
+x = np.load(files[0], allow_pickle=False)
+profile = json.loads((root / "preprocess_profile.json").read_text())
+print("count:", len(files))
+print("shape/dtype:", x.shape, x.dtype)
+print("finite:", bool(np.isfinite(x).all()))
+print("profile:", profile)
+PY
 ```
 
-출력 예시:
-```
-Generating 1000 calibration tensors from assets/calibration_data → assets/calib_hwc
-Done: 1000 files saved to assets/calib_hwc
-Sample stats: min=-2.118  max=2.640  mean=0.021  std=0.972
-```
+기대값은 1,000개, `(224, 224, 3)`, `float32`, finite, profile `timm`이다.
 
-### 전처리 상세
+## Patch Slimming ONNX 규칙
 
-```python
-MEAN = np.float32([0.485, 0.456, 0.406])
-STD  = np.float32([0.229, 0.224, 0.225])
+최종 Patch Slimming export는 실제 선택 연산을 유지하되, 계산 결과를 바꾸지 않는
+identity selection matmul은 제거한다. dynamic `Gather`로 되돌리지 않는다. 정확한
+export 규칙과 ONNX 검증 체크리스트는
+[`patch_slimming_mxq_diagnosis_ko.md`](patch_slimming_mxq_diagnosis_ko.md)를 따른다.
 
-# 1. BGR → RGB
-img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+컴파일 전에 ONNX Runtime 정확도와 다음 항목을 확인한다.
 
-# 2. 단변을 256으로 비율 유지 리사이즈
-scale = 256 / min(h, w)
-img = cv2.resize(img, (int(round(w * scale)), int(round(h * scale))))
+- 입력 shape/dtype이 컴파일 계약과 일치하는가
+- 출력이 `(1, 1000)` finite logits인가
+- 최종 ONNX의 실제 token selection 경로가 보존됐는가
+- 불필요한 identity selector가 제거됐는가
+- baseline/patch/reduced 파일명이 최종 규칙과 일치하는가
 
-# 3. 중앙 224×224 크롭
-img = img[(h-224)//2:(h-224)//2+224,
-          (w-224)//2:(w-224)//2+224]
+## Docker에서 GPU 2번으로 컴파일
 
-# 4. float32 정규화
-img = img.astype(np.float32) / 255.0
-
-# 5. ImageNet 평균/표준편차 정규화 → HWC (224, 224, 3)
-img = (img - MEAN) / STD
-
-np.save(f"{dst}/{saved:04d}.npy", img)   # shape: (224, 224, 3)
-```
-
-> **HWC 포맷 이유**: qbcompiler `backend="onnx"`는 기본적으로 HWC 입력을 가정합니다. CHW로 변환(transpose)하지 않고 저장합니다.
-
----
-
-## Step 3 — MXQ 컴파일 `[DOCKER]`
-
-### Docker 실행
+호스트 저장소가 컨테이너의 `/workspace/npu`에 mount됐다고 가정한다. 출력은 먼저
+Git에서 제외되는 `assets/mxq/` staging 폴더에 생성한다. 검증 전 최종 폴더를 직접
+덮어쓰지 않는다.
 
 ```bash
-docker run -it --rm \
-  -v /home/airlab_compression/npu:/workspace/npu \
-  <qbcompiler-image> bash
+cd /workspace/npu
 
-# 컨테이너 내부
-pip install /workspace/npu/assets/qbcompiler-1.1.0+aries2-py3-none-any.whl
+CUDA_VISIBLE_DEVICES=2 \
+NPU_ONNX_DIR=/workspace/npu/assets/onnx \
+NPU_MXQ_DIR=/workspace/npu/assets/mxq \
+NPU_CALIB_DIR=/workspace/npu/assets/calib_hwc \
+NPU_ONNX_FILTER=_npusafe \
+NPU_INFERENCE_SCHEME=global8 \
+python3 /workspace/npu/compile/mxq/compile_hwc.py 2>&1 | tee compile_final.log
+```
+
+현재 컴파일 설정은 다음과 같다.
+
+- backend: `onnx`
+- config preset: `vision_transformer`
+- CPU offload: enabled
+- inference scheme: `global8`
+- 출력 이름: `{onnx_stem}_vt_global8.mxq`
+
+`compile_hwc.py`는 동일한 출력 파일이 있으면 건너뛴다. 재컴파일이 필요할 때는 새
+staging 출력 디렉터리를 지정하는 편이 안전하다.
+
+```bash
+mkdir -p /workspace/npu/assets/mxq/rebuild_20261015
+
+CUDA_VISIBLE_DEVICES=2 \
+NPU_ONNX_DIR=/workspace/npu/assets/onnx \
+NPU_MXQ_DIR=/workspace/npu/assets/mxq/rebuild_20261015 \
+NPU_CALIB_DIR=/workspace/npu/assets/calib_hwc \
+NPU_ONNX_FILTER=_npusafe \
+NPU_INFERENCE_SCHEME=global8 \
 python3 /workspace/npu/compile/mxq/compile_hwc.py
 ```
 
-### compile_hwc.py 동작
+## 컴파일 후 검증과 승격
 
-`assets/onnx/*.onnx`를 자동 스캔하여 순서대로 컴파일합니다. 이미 `.mxq`가 존재하는 모델은 건너뜁니다.
+컴파일 성공만으로 최종 모델로 간주하지 않는다. NPU 서버에서 다음 순서로 검증한다.
 
-```python
-# 상단 설정값 — 변경 후 재컴파일 필요
-INFERENCE_SCHEME = "global8"   # "single" | "multi" | "global" | "global4" | "global8"
+1. `mobilint-cli status`에서 장치·드라이버·펌웨어 확인
+2. `benchmark/final/eval_final_models.py --limit 1`로 모든 MXQ 로드/출력 확인
+3. ONNX와 MXQ의 출력 shape 및 finite 여부 확인
+4. ImageNet 50,000장 전체 정확도와 latency/telemetry 측정
+5. SHA-256과 최종 보고서를 함께 보관
 
-mxq_compile(
-    model=onnx_path,
-    calib_data_path=CALIB_TXT,
-    save_path=mxq_path,               # e.g. vit_tiny_..._global8.mxq
-    backend="onnx",
-    inference_scheme=INFERENCE_SCHEME,
-    quantization_method=0,            # WChALayer
-    quantization_mode=2,              # Histogram
-    hist_search_type=2,               # KL-divergence
-    quantization_output=0,            # Layer
-)
-```
-
-출력 파일명에 scheme이 자동 포함됩니다: `{stem}_{scheme}.mxq`
-
-### 재컴파일 방법
-
-`INFERENCE_SCHEME`을 변경한 경우 기존 파일을 삭제 후 재실행합니다:
-
-```bash
-rm "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq"
-python3 /workspace/npu/compile/mxq/compile_hwc.py
-```
-
----
-
-## Step 4 — NPU 추론 실행 `[NPU]`
-
-### 기본 실행
-
-```bash
-# warmup 5회, 측정 20회, 결과 results/ 에 저장
-python3 benchmark/runtime/run_npu.py \
-  --mxq "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq" \
-  --image val_example.JPEG
-
-# 정밀 측정
-python3 benchmark/runtime/run_npu.py \
-  --mxq "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq" \
-  --image val_example.JPEG \
-  --runs 100 --warmups 10 --no-save
-```
-
-출력 예시:
-```
-모델  : assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq
-이미지: val_example.JPEG  → shape=(224, 224, 3)
-코어  : global8, warmup=5, runs=20
-
-총 시간 : 0.4821s
-평균 레이턴시: 24.11ms
-FPS     : 41.49
-
-Top-5 예측:
-  1. [ 340] zebra                                        52.31%
-  2. [ 292] tiger, Panthera tigris                       18.44%
-  ...
-```
-
-### qbruntime 핵심 코드
-
-```python
-import qbruntime
-
-acc    = qbruntime.Accelerator(0)          # NPU 디바이스 0번
-config = qbruntime.ModelConfig()
-
-# global8: Cluster0/1 각 4코어 = 총 8코어
-C, Co = qbruntime.Cluster, qbruntime.Core
-config.set_single_core_mode(core_ids=[
-    qbruntime.CoreId(C.Cluster0, Co.Core0),
-    qbruntime.CoreId(C.Cluster0, Co.Core1),
-    qbruntime.CoreId(C.Cluster0, Co.Core2),
-    qbruntime.CoreId(C.Cluster0, Co.Core3),
-    qbruntime.CoreId(C.Cluster1, Co.Core0),
-    qbruntime.CoreId(C.Cluster1, Co.Core1),
-    qbruntime.CoreId(C.Cluster1, Co.Core2),
-    qbruntime.CoreId(C.Cluster1, Co.Core3),
-])
-
-model = qbruntime.Model(mxq_path, config)
-model.launch(acc)                          # NPU에 모델 로드
-
-output = model.infer([img])               # img: (224,224,3) HWC float32
-model.dispose()                           # 리소스 해제
-```
-
-### Top-5 정확도 테스트
-
-```bash
-python3 benchmark/runtime/test_npu.py \
-  --model "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq" \
-  --labels imagenet_classes.txt \
-  --n 50
-```
-
----
-
-## 양자화 파라미터 상세
-
-| 파라미터 | 현재 값 | 의미 |
-|---|---|---|
-| `quantization_method` | `0` (WChALayer) | 가중치: 채널별(per-channel), activation: 레이어별(per-layer) |
-| `quantization_mode` | `2` (Histogram) | activation 범위를 히스토그램으로 측정. `0=Max`보다 아웃라이어에 강건 |
-| `hist_search_type` | `2` (KL-divergence) | KL 발산을 최소화하는 클리핑 범위 탐색. `mode=2`일 때만 적용 |
-| `quantization_output` | `0` (Layer) | 출력을 레이어 단위로 양자화 |
-
-### 전체 옵션
-
-**quantization_method**
-- `0` WChALayer — 가중치 per-channel, activation per-layer
-- `1` WChAMulti — 가중치 per-channel, activation per-channel
-- `2` WChALayerZeropoint — WChALayer + zero-point 허용
-- `3` WChAMultiZeropoint — WChAMulti + zero-point 허용
-
-**quantization_mode**
-- `0` Max — activation 최댓값 기준
-- `1` MaxPercentile — 백분위수 기준
-- `2` Histogram — 히스토그램 분포 기반 (가장 정밀)
-
-**hist_search_type** (mode=2일 때만 적용)
-- `0` Percentile
-- `1` MSE
-- `2` KL-divergence
-
-**quantization_output**
-- `0` Layer — 레이어 단위
-- `1` Ch — 채널 단위 (더 정밀하나 느림)
-- `2` Sigmoid
-
----
-
-## Inference Scheme
-
-`inference_scheme`은 **컴파일 타임**에 결정되며 변경 시 재컴파일이 필요합니다.
-
-| scheme | 코어 수 | 용도 |
-|---|---|---|
-| `single` | 1 (기본값) | 단일 코어, 낮은 전력 소비 |
-| `multi` | 2 | Cluster0 내 2코어 |
-| `global` / `global4` | 4 | 양쪽 Cluster 각 2코어 |
-| **`global8`** | **8** | **전체 8코어, 최고 처리량 (현재 사용)** |
-| `all` | 전체 | 가용 코어 자동 사용 |
-
-`NPU_INFERENCE_SCHEME` 환경변수로 지정한다.
-
-```bash
-NPU_INFERENCE_SCHEME=single python3 compile/mxq/compile_hwc.py
-NPU_INFERENCE_SCHEME=global8 python3 compile/mxq/compile_hwc.py
-```
-
----
-
-## 입력 포맷 정리
-
-| 스크립트 | 포맷 | Shape |
-|---|---|---|
-| `compile/calibration/generate_hwc.py` 출력 | HWC | `(224, 224, 3)` |
-| `compile/mxq/compile_hwc.py` 캘리브레이션 입력 | HWC | `(224, 224, 3)` |
-| `benchmark/runtime/run_npu.py` / `test_npu.py` NPU 입력 | HWC | `(224, 224, 3)` |
-| `benchmark/onnx/infer_onnx.py` CPU 검증 입력 | NCHW | `(1, 3, 224, 224)` |
-
----
-
-## 빠른 명령어 참조
-
-```bash
-# ── 처음부터 전체 파이프라인 ──────────────────────────────────────────
-
-# [로컬] 캘리브레이션 데이터 생성
-source aries_env/bin/activate
-python3 compile/calibration/generate_hwc.py
-
-# [Docker] MXQ 컴파일
-docker run -it --rm -v /home/airlab_compression/npu:/workspace/npu <image> bash
-pip install /workspace/npu/assets/qbcompiler-1.1.0+aries2-py3-none-any.whl
-python3 /workspace/npu/compile/mxq/compile_hwc.py
-
-# [로컬] NPU 추론
-python3 benchmark/runtime/run_npu.py \
-  --mxq "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq" \
-  --image val_example.JPEG --runs 50 --warmups 10
-
-# ── inference_scheme 변경 후 재컴파일 ────────────────────────────────
-
-# 다른 inference scheme을 환경변수로 지정
-rm "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq"
-NPU_INFERENCE_SCHEME=global8 python3 /workspace/npu/compile/mxq/compile_hwc.py
-
-# ── 정확도 테스트 ────────────────────────────────────────────────────
-
-python3 benchmark/runtime/test_npu.py \
-  --model "assets/mxq/vit_tiny_prune50_global _reduced_global8.mxq" \
-  --labels imagenet_classes.txt \
-  --n 50
-```
+검증 완료 파일만 날짜가 붙은 최종 폴더로 승격한다. 현재 최종 세트는
+`assets/mxq_final_20261006/`의 12개이며, 재현 명령과 보고서는
+[`benchmark/README.md`](../benchmark/README.md)에 있다.

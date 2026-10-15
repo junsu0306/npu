@@ -1,0 +1,13 @@
+details_file,group,host_rss_peak_mib,host_uss_peak_mib,latency_mean_ms,model_id,npu_delta_reported_mb,npu_idle_peak_reported_mb,npu_peak_reported_mb,status,telemetry_runs,variant
+tiny30__baseline.json,tiny30,141.6171875,122.21484375,3.155238389999795,tiny30__baseline,12.0,0.0,12.0,ok,3186,baseline
+tiny30__reduced.json,tiny30,141.8515625,122.875,3.042717589996755,tiny30__reduced,11.0,0.0,11.0,ok,3288,reduced
+tiny30__patch_slimming.json,tiny30,138.34375,118.96875,2.4152392500036513,tiny30__patch_slimming,7.0,0.0,7.0,ok,4074,patch_slimming
+tiny50__baseline.json,tiny50,137.859375,118.875,3.1411291299991717,tiny50__baseline,12.0,0.0,12.0,ok,3185,baseline
+tiny50__reduced.json,tiny50,139.6015625,120.2265625,2.9658508200009237,tiny50__reduced,10.0,0.0,10.0,ok,3407,reduced
+tiny50__patch_slimming.json,tiny50,138.21875,118.859375,2.4657115699938004,tiny50__patch_slimming,5.0,0.0,5.0,ok,4229,patch_slimming
+small30__baseline.json,small30,139.7265625,120.3515625,5.664137949997894,small30__baseline,35.0,0.0,35.0,ok,1752,baseline
+small30__reduced.json,small30,143.99609375,125.12109375,5.434364880002249,small30__reduced,28.0,0.0,28.0,ok,1827,reduced
+small30__patch_slimming.json,small30,139.05078125,120.38671875,4.584521169999789,small30__patch_slimming,23.0,0.0,23.0,ok,2197,patch_slimming
+small50__baseline.json,small50,137.72265625,118.36328125,5.735759910003253,small50__baseline,35.0,0.0,35.0,ok,1756,baseline
+small50__reduced.json,small50,140.01171875,121.1328125,5.1972951399966405,small50__reduced,24.0,0.0,24.0,ok,1940,reduced
+small50__patch_slimming.json,small50,141.48828125,122.4296875,4.180112789999839,small50__patch_slimming,18.0,0.0,18.0,ok,2453,patch_slimming
