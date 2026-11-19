@@ -2,9 +2,8 @@
 """Generate HWC calibration tensors from ImageNet images.
 
 The preprocessing used for calibration must be identical to the preprocessing
-used for ONNX/MXQ inference.  ``timm`` is the correct profile for
-``timm/vit_tiny_patch16_224.augreg_in21k_ft_in1k``.  ``legacy`` is retained
-only to reproduce older repository results.
+used for ONNX/MXQ inference. ``timm`` names this repository's fixed OpenCV
+profile for the final AugReg ViT-Tiny/Small models, not a call to timm itself.
 """
 
 import argparse
@@ -26,13 +25,6 @@ PROFILES = {
         "mean": [0.5, 0.5, 0.5],
         "std": [0.5, 0.5, 0.5],
     },
-    "legacy": {
-        "resize_short": 256,
-        "interpolation": cv2.INTER_LINEAR,
-        "interpolation_name": "bilinear",
-        "mean": [0.485, 0.456, 0.406],
-        "std": [0.229, 0.224, 0.225],
-    },
 }
 
 
@@ -40,13 +32,13 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--profile", choices=sorted(PROFILES), default="timm",
-        help="timm is required for the AugReg ViT-Tiny; legacy reproduces old data",
+        help="fixed final AugReg ViT-Tiny/Small preprocessing profile",
     )
     parser.add_argument(
         "--src-dir", default=os.path.join(ASSETS_DIR, "calibration_data")
     )
     parser.add_argument(
-        "--output-dir", default=os.path.join(ASSETS_DIR, "calib_hwc")
+        "--output-dir", default=os.path.join(ASSETS_DIR, "calib_hwc_timm")
     )
     parser.add_argument("--n-images", type=int, default=1000)
     return parser.parse_args()
@@ -78,6 +70,8 @@ def main():
     args = parse_args()
     if args.n_images < 1:
         raise ValueError("--n-images must be >= 1")
+    if os.path.isdir(args.output_dir) and os.listdir(args.output_dir):
+        raise FileExistsError("Use a new/empty --output-dir to avoid mixing calibration tensors")
     os.makedirs(args.output_dir, exist_ok=True)
 
     image_files = []
@@ -128,6 +122,11 @@ def main():
             last_tensor.min(), last_tensor.max(),
             last_tensor.mean(), last_tensor.std(),
         ))
+    if saved != args.n_images:
+        raise RuntimeError(
+            "Requested %d tensors but generated %d; supply enough readable images"
+            % (args.n_images, saved)
+        )
 
 
 if __name__ == "__main__":

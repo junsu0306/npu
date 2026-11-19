@@ -1,0 +1,349 @@
+{
+  "schema_version": 1,
+  "release_id": "final_20261015",
+  "model_set": "mxq_final_20261006",
+  "source_result_commit": "3e8bb5ae8ce923e13a703d1d7f72b3eaccbb5985",
+  "purpose": "Integrity of measured ONNX/MXQ artifacts and original NPU evidence, not an accuracy guarantee",
+  "files": [
+    {
+      "path": "assets/mxq_final_20261006/small30__baseline__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 25669056,
+      "sha256": "f6d45ea2ce23104d184bbb42b09cd8515e6244eb25485367485715784f58fd48"
+    },
+    {
+      "path": "assets/mxq_final_20261006/small30__patch_slimming__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 19027674,
+      "sha256": "bbd41a00058593de61acce35bd1121882551b861d17866db0c7e10ffa36b879a"
+    },
+    {
+      "path": "assets/mxq_final_20261006/small30__reduced__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 19197292,
+      "sha256": "7411c8c7441d1244fdfb8b88c15294f419a7a3cc1e2234dd827a2ed4dd39d0ab"
+    },
+    {
+      "path": "assets/mxq_final_20261006/small50__baseline__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 25669056,
+      "sha256": "590a31cfb6dd8dcbfab5ba30d455d7eaa2f7c0d690552435f7e66b0afb31034f"
+    },
+    {
+      "path": "assets/mxq_final_20261006/small50__patch_slimming__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 14501449,
+      "sha256": "668741deb2709383a9caa521f3bf06d3d1a9393f999eec47558173b662d3ef19"
+    },
+    {
+      "path": "assets/mxq_final_20261006/small50__reduced__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 14579718,
+      "sha256": "3719c948c08f3e79a6bdbfc9a4917d334781c46dffda0483eaf5e9a4a25617a1"
+    },
+    {
+      "path": "assets/mxq_final_20261006/tiny30__baseline__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 7929396,
+      "sha256": "96de47b4f6aa3698ba76049f3208acdb5201b48e2221b0ecaa73cb5314b2aa54"
+    },
+    {
+      "path": "assets/mxq_final_20261006/tiny30__patch_slimming__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 6022812,
+      "sha256": "90a9b4ddd7eaf6492539eab8f4af02ea8420e46453d92ef2df3f5721ad1d1113"
+    },
+    {
+      "path": "assets/mxq_final_20261006/tiny30__reduced__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 6297268,
+      "sha256": "0c651c7c4b202aa400671924fa5ef7be51c21900df82d1606653c7c834f03f0c"
+    },
+    {
+      "path": "assets/mxq_final_20261006/tiny50__baseline__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 7929396,
+      "sha256": "2c740f6034989d5512d3e77a1df693f15c3c2076346565f018e3b77cbbff73ff"
+    },
+    {
+      "path": "assets/mxq_final_20261006/tiny50__patch_slimming__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 4826234,
+      "sha256": "8626d858b2fb43e3023c226be212173d0d358e4e4bf88c9827b072cabfc116f4"
+    },
+    {
+      "path": "assets/mxq_final_20261006/tiny50__reduced__nhwc_b1_npusafe_vt_global8.mxq",
+      "bytes": 5100498,
+      "sha256": "52be73fb93398a53f8e0c6c9235ffa1c9320e36616b003cda71e7031064a6cb1"
+    },
+    {
+      "path": "assets/onnx/small30__baseline__nhwc_b1_npusafe.onnx",
+      "bytes": 88285310,
+      "sha256": "9812da2a85262ee515dfb7947f5ced1186a0f447005e7a7988c6bb996726cdc0"
+    },
+    {
+      "path": "assets/onnx/small30__patch_slimming__nhwc_b1_npusafe.onnx",
+      "bytes": 62152349,
+      "sha256": "0146dde675d79f36d95529ddda67ace59dca3a7a5f718fb02f4039716ab3b6a1"
+    },
+    {
+      "path": "assets/onnx/small30__reduced__nhwc_b1_npusafe.onnx",
+      "bytes": 61819358,
+      "sha256": "1bf7f5fade8b32de735151f01f714e63d98e815ef9204fc2562ff3e978bad5cd"
+    },
+    {
+      "path": "assets/onnx/small50__baseline__nhwc_b1_npusafe.onnx",
+      "bytes": 88285310,
+      "sha256": "9812da2a85262ee515dfb7947f5ced1186a0f447005e7a7988c6bb996726cdc0"
+    },
+    {
+      "path": "assets/onnx/small50__patch_slimming__nhwc_b1_npusafe.onnx",
+      "bytes": 45030777,
+      "sha256": "ec63a02ee86783a268a4cfb0f001aa16fdbfb549128a9a2c8d0d794952789ce3"
+    },
+    {
+      "path": "assets/onnx/small50__reduced__nhwc_b1_npusafe.onnx",
+      "bytes": 44175422,
+      "sha256": "0caf8659b7232bedff19e42a2f798b8b508338a80c8381047630d422671183fc"
+    },
+    {
+      "path": "assets/onnx/tiny30__baseline__nhwc_b1_npusafe.onnx",
+      "bytes": 22952270,
+      "sha256": "0d8655a8e7641e9023c6464f7c97ca172b447709f5c2b3abb6c91d83a19b156b"
+    },
+    {
+      "path": "assets/onnx/tiny30__patch_slimming__nhwc_b1_npusafe.onnx",
+      "bytes": 16379897,
+      "sha256": "08d4014de88f6f156dd88e312e240bf71e3aff0af473b2fd33aba03d7e5a5fa1"
+    },
+    {
+      "path": "assets/onnx/tiny30__reduced__nhwc_b1_npusafe.onnx",
+      "bytes": 16096190,
+      "sha256": "bc628a54be653609a895d279eb43826827eeaaddc3cf8ea23c3855108551cff6"
+    },
+    {
+      "path": "assets/onnx/tiny50__baseline__nhwc_b1_npusafe.onnx",
+      "bytes": 22952270,
+      "sha256": "0d8655a8e7641e9023c6464f7c97ca172b447709f5c2b3abb6c91d83a19b156b"
+    },
+    {
+      "path": "assets/onnx/tiny50__patch_slimming__nhwc_b1_npusafe.onnx",
+      "bytes": 11815319,
+      "sha256": "90086de3e74482a4fdbc25b0065e6d2dce9895cb1e417aa9af63d3f77302f65c"
+    },
+    {
+      "path": "assets/onnx/tiny50__reduced__nhwc_b1_npusafe.onnx",
+      "bytes": 11531612,
+      "sha256": "aa122558ccb0ea5b3cd081d6b8ed1129948edb95bcbcb6e1a63753859b9fe169"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/benchmark.json",
+      "bytes": 104102,
+      "sha256": "040b975dee9bbe7f676c64b48dbe9db0d08af832033e1f4e5b69e97168a974d4"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/input_nhwc_fp32.npy",
+      "bytes": 602240,
+      "sha256": "993a2f50ab2adfcadec50014e1bbe387bf76d79effeae6618a1105d735b1d964"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/small30__baseline.json",
+      "bytes": 7704,
+      "sha256": "68a021ee5c46b5089f431a3811ae1910210c19593b674b569f0c5da508afdf7f"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/small30__patch_slimming.json",
+      "bytes": 7747,
+      "sha256": "a2d34d3493c51652c95e6c448414a6f28a35205518ca57951cb254a283b6bd3d"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/small30__reduced.json",
+      "bytes": 7688,
+      "sha256": "c3f4b1aaafe8fc357ddffc42a0fb6b9b06252efcf281cf7f98c44978eb8dc902"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/small50__baseline.json",
+      "bytes": 7746,
+      "sha256": "18973a8011b72cbe28d51976c6ac4836a195d4876e065ff61e66438cb099c7d4"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/small50__patch_slimming.json",
+      "bytes": 7718,
+      "sha256": "de0af7311e5af1b5f013a8071a867a3c749550742699f8b9fbd8ea6b03a1d7c1"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/small50__reduced.json",
+      "bytes": 7671,
+      "sha256": "c3d4527da61f195a4e09c09f6c1bf7c80fe3ad8cbbddf56a590bbd3d3a77c82c"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/summary.csv",
+      "bytes": 1692,
+      "sha256": "eb506e55d5a9802e40dfb2d697c9946ed73997bbf5b7164971295998da95ef3a"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/summary.json",
+      "bytes": 5786,
+      "sha256": "c941d8f4696fa61f1535962d6156081a20ed370993d42bd4694e0dd70c12905a"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/tiny30__baseline.json",
+      "bytes": 7695,
+      "sha256": "d29ef0b256807e79b026f0ba1444c5b21c721f1d77ba9aeda2e8910d322e915b"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/tiny30__patch_slimming.json",
+      "bytes": 7694,
+      "sha256": "8914eb3d0c074c64284dbd220571506443251b3bfd7b5ab18b20a67eec4bc24b"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/tiny30__reduced.json",
+      "bytes": 7697,
+      "sha256": "af649baa59be7ad32d19530ff226f2ccc4c94b3e18a39ff8bc0f559302289495"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/tiny50__baseline.json",
+      "bytes": 7693,
+      "sha256": "42e282eba39df16dce41b58f86fa1109597498293a47a7d2ac40fa5d097e4a65"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/tiny50__patch_slimming.json",
+      "bytes": 7726,
+      "sha256": "3067cb8d9cd9c101d1e79339198cf953a79ef3a73da864cd41838c48958c3662"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/isolated_memory/tiny50__reduced.json",
+      "bytes": 7690,
+      "sha256": "ba5164986e1da90b754397b9db46dc7184abe025ffa0a6f4cc3ed64c39f7ce54"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/small30__baseline__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7281,
+      "sha256": "69db82f7410358cc1e251ba3291f7d5db8f47c6c1fb11667d3a3951e023aaa28"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/small30__patch_slimming__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7314,
+      "sha256": "4e3b3af7b0212a99f480c7eafd21b7327745be35eefdb3f3449f9d480a74eabf"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/small30__reduced__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7304,
+      "sha256": "89afc0d50f92d398f5ae417097138e3b75eb6ed99015cd2ced9ff674866ceb54"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/small50__baseline__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7289,
+      "sha256": "c94e22d5b3dd7a6df180d3b474d4e1d768880c059030d3fb03fdca9a413a2e48"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/small50__patch_slimming__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7314,
+      "sha256": "cb7d92b9cff2fa93607e477372b6d93f5d674fcbb8a63e260ccc48506182eb72"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/small50__reduced__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7257,
+      "sha256": "592172086d8fa26a21c8674d814677e1fd3373a305ba42dab05c9c659e4538fe"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/tiny30__baseline__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7224,
+      "sha256": "2c3721d03a5266fcaafcaf02e34342e913e8d1120798c1c1b62f5b5b41eca6ff"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/tiny30__patch_slimming__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7292,
+      "sha256": "2807521dd7c891003816341f4ed721948e8711cffb0ec426c7a4817ed75a4d71"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/tiny30__reduced__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7287,
+      "sha256": "7bbf0c04bb4b3f8fd9a336cd6d0b9b4ba39e23c7ab884f2d0372beb21c6be7e6"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/tiny50__baseline__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7245,
+      "sha256": "85f37e64669fbe99fc895fb3901b0b0d57083c298bdbfaa3dc72aba70cc4de3e"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/tiny50__patch_slimming__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7293,
+      "sha256": "fedc5532ebb77f3b67a88003696a9a9ddac467ce1791a35cc4cf80692c0927d3"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/models/tiny50__reduced__nhwc_b1_npusafe_vt_global8.json",
+      "bytes": 7266,
+      "sha256": "b31204aa0c025535529888877335b06a6e474292c758eda4b07784772570465e"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/small30__baseline__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "19706f634be24e021affe679e5d32e34a1f75d22ddfb7de4b4910ffc01ede8f2"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/small30__patch_slimming__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "2e2be09d3358c925e6355ead61e086dae221235cfa0e6425b4b5330939d54212"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/small30__reduced__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "15fff352c06c629902e34712b832f0456dedbd2082907290f977811fb959b46c"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/small50__baseline__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "19706f634be24e021affe679e5d32e34a1f75d22ddfb7de4b4910ffc01ede8f2"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/small50__patch_slimming__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "81303b1112cc2047adf6bcd663d13823f67438bc215fd8a06d1cc6e70930d19b"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/small50__reduced__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "836c769703e987beaede9303c75a976eeec0462ee22325457932f2dd3f1b3852"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/tiny30__baseline__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "5d7a1d96e94a2a737493bfaeb915fdeb80cbea478e02024dcef298baec566adf"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/tiny30__patch_slimming__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "ff311c778ce918d5d7ca3c5fe586fa5c728a5269eed8ab7bf101dd93ddbcd195"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/tiny30__reduced__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "f17bd4de518b9a1514aa8e014278606cb8e3b59335d552636f0500108eeea3df"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/tiny50__baseline__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "5d7a1d96e94a2a737493bfaeb915fdeb80cbea478e02024dcef298baec566adf"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/tiny50__patch_slimming__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "196a40ed2f701e68bc6e6b280a3ad77ad53b26e955f7b14b14c496b94a2c0295"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/predictions/tiny50__reduced__nhwc_b1_npusafe_vt_global8.npy",
+      "bytes": 200128,
+      "sha256": "e742712254c4d70f5556579394dfa95f911f8c8c285c23818556c7ff9ef4b4ac"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/run_metadata.json",
+      "bytes": 3749,
+      "sha256": "cea87521a5a1df83fd1813d55e77c4b0870771cd2e71047cb68e3d831a94f498"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/samples.tsv",
+      "bytes": 1508039,
+      "sha256": "a461792c70ea36081d54a238c95d595ca6c87f8e8c49a42238d3db5ea2029703"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/summary.csv",
+      "bytes": 5754,
+      "sha256": "f96d7f6b6f35f7a009cfcecaa10191359ddffd012766c517328074728e3ffb3f"
+    },
+    {
+      "path": "results/final_benchmark/final_20261015/summary.md",
+      "bytes": 14448,
+      "sha256": "fc3ec138deef9aa8d9cab82b9873ea0d673abcc7554a5b2d2824d693576e3d4b"
+    }
+  ]
+}

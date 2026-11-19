@@ -1,0 +1,3 @@
+# Optional: CPU ONNX reference and graph verification, not NPU inference.
+-r requirements-npu.txt
+onnxruntime

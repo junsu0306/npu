@@ -1,48 +1,24 @@
-# NPU 코드베이스 구조
+# 제출용 폴더 구조
 
-```text
-npu/
-├── assets/
-│   ├── calibration_data/   원본 calibration 이미지
-│   ├── calib_hwc/          컴파일 입력용 HWC NPY
-│   ├── onnx/               production ONNX
-│   └── mxq_final_20261006/ 최종 비교 대상 MXQ 12개
-├── compile/
-│   ├── calibration/        calibration tensor 생성
-│   ├── onnx/               컴파일 전 ONNX 정리
-│   └── mxq/                ONNX/Torch → MXQ 컴파일
-├── benchmark/              실제 NPU 실행, 정확도 및 성능 측정
-│   ├── model_zoo/          Model Zoo wrapper 기반 통합 벤치마크
-│   ├── final/              최종 모델 정확도·속도·메모리·전력·FLOPs 종합 평가
-│   ├── runtime/            direct qbruntime 실행 예제
-│   ├── ablation/           single/global8 비교 실험
-│   └── onnx/               MXQ 변환 전 ONNX CPU reference
-├── results/                최종 벤치마크 Markdown/JSON/CSV 출력
-└── docs/                   변환·실행·구현 문서
-```
+| 경로 | 역할 |
+|---|---|
+| `README.md` | 목적, 파이프라인, 최종 NPU 12개 결과 |
+| `compile/calibration/generate_hwc.py` | HWC FP32 calibration 생성 |
+| `compile/mxq/compile_hwc.py` | 최종 preset/global8 MXQ 컴파일 |
+| `compile/onnx/remove_identity_selections.py` | identity 선택 점검/보조 최적화 |
+| `benchmark/final/eval_final_models.py` | 전체 ImageNet 정확도·성능·telemetry |
+| `benchmark/memory/profile_memory.py` | 새 프로세스 기반 메모리 재검증 |
+| `benchmark/runtime/run_npu.py` | 단일 이미지 NPU 확인 |
+| `benchmark/onnx/infer_onnx.py` | 단일 이미지 ONNX CPU reference |
+| `scripts/verify_release.py` | 최종 파일·결과·Git 포함 대상 검증 |
+| `tests/` | NPU 없이 실행하는 회귀 테스트 |
+| `assets/onnx/` | 최종 ONNX 12개 |
+| `assets/mxq_final_20261006/` | 실제 평가한 MXQ 12개 |
+| `assets/labels/` | ImageNet class 표시명 |
+| `assets/RELEASE_MANIFEST.json` | 모델/원본 결과 해시 |
+| `results/final_benchmark/final_20261015/` | 최종 실험 원본, 수정하지 않음 |
+| `docs/` | 방법론, ONNX 계약, 실행, 결과, 제출 안내 |
 
-## 전체 흐름
+`assets/mxq/`, calibration 이미지/NPY, 새 실행 결과, 로그, SDK 설치물과 `past/`는 Git 제출 대상이 아니다. `past/submission_cleanup_20261020/`에는 정리 전 문서·코드·SDK·로컬 자료를 분류해 보존했다. 이 폴더는 실행 파이프라인의 의존성이 아니며 외부 제출에 포함하지 않는다.
 
-1. `compile/calibration/generate_hwc.py`: calibration tensor 생성
-2. `compile/mxq/compile_hwc.py`: 일반 ONNX → MXQ 컴파일
-3. `benchmark/final/eval_final_models.py --limit 1`: 최종 12개 MXQ 스모크 테스트
-4. `benchmark/final/eval_final_models.py`: ImageNet 50,000장 전체 지표 종합 평가
-5. `benchmark/memory/profile_memory.py`: 모델별 독립 프로세스 메모리 재검증
-
-최종 custom HWC float32 MXQ는 `benchmark/final/eval_final_models.py`로 실제
-NPU/process peak와 정확도·속도를 함께 측정한다. Model Zoo 입력 계약으로 컴파일된
-MXQ의 activation 분석은 `benchmark/model_zoo/run_model_zoo_benchmark.py`에
-`--architecture`를 전달한다.
-
-`Orin_Compression/scripts/run_detailed_benchmark.py`와 `run_npu_test.py`의 핵심 실행
-흐름은 각각 `model_zoo/run_model_zoo_benchmark.py`, `model_zoo/run_smoke_test.py`로 이식되었습니다.
-새 구현은 모델 하나와 MXQ 하나를 명시적으로 연결하므로, 하나의 local MXQ가 여러
-Model Zoo wrapper에 잘못 적용되는 실수를 방지합니다.
-
-완료된 진단 ONNX/MXQ는 저장소에 장기 보관하지 않는다. Patch Slimming의 최종 export
-규칙은 `docs/patch_slimming_mxq_diagnosis_ko.md`와
-`compile/onnx/remove_identity_selections.py`에 유지한다.
-
-기존 루트의 `run_npu.py`, `test_npu.py`, `infer_onnx.py`, `infer_resnet50.py`도
-`benchmark/runtime`과 `benchmark/onnx`로 이동했습니다. NPU 루트에는 실행 스크립트를
-두지 않으며 신규 실험은 목적에 맞는 `benchmark/` 하위 진입점을 사용합니다.
+모델 파일명/최종 결과 경로는 기존 기록과 대응하도록 유지했다. 파일 이동으로 바뀐 label 경로는 실행 코드에 반영했다. 최종 측정 JSON 내부의 원래 서버 절대경로는 증거이므로 수정하지 않는다.

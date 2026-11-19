@@ -35,7 +35,12 @@ from typing import Any, Iterable
 import cv2
 import numpy as np
 import psutil
-import qbruntime
+try:
+    import qbruntime
+except ModuleNotFoundError as exc:
+    if exc.name != "qbruntime":
+        raise
+    qbruntime = None
 
 
 NPU_ROOT = Path(__file__).resolve().parents[2]
@@ -43,8 +48,6 @@ DEFAULT_MODELS_DIR = NPU_ROOT / "assets" / "mxq_final_20261006"
 DEFAULT_ONNX_DIR = NPU_ROOT / "assets" / "onnx"
 DEFAULT_VAL_DIR = NPU_ROOT.parent / "imagenet_val"
 
-LEGACY_MEAN = np.float32([0.485, 0.456, 0.406])
-LEGACY_STD = np.float32([0.229, 0.224, 0.225])
 DEIT_MEAN = np.float32([0.5, 0.5, 0.5])
 DEIT_STD = np.float32([0.5, 0.5, 0.5])
 
@@ -55,13 +58,11 @@ FINAL_NAME_RE = re.compile(
 VARIANT_ORDER = {
     "baseline": 0,
     "patch_slimming": 1,
-    "patch_slimming_stage369_relaxed": 2,
     "reduced": 3,
 }
 VARIANT_LABELS = {
     "baseline": "Baseline",
     "patch_slimming": "Patch Slimming",
-    "patch_slimming_stage369_relaxed": "Patch Slimming Relaxed",
     "reduced": "Reduced",
 }
 
@@ -111,7 +112,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--preprocess",
-        choices=["timm", "deit", "legacy"],
+        choices=["timm"],
         default="timm",
     )
     parser.add_argument(
@@ -428,8 +429,10 @@ def preprocess(path: Path, mode: str) -> np.ndarray:
         raise ValueError("cannot read image: %s" % path)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    resize_short = 256 if mode == "legacy" else 249
-    interpolation = cv2.INTER_LINEAR if mode == "legacy" else cv2.INTER_CUBIC
+    if mode != "timm":
+        raise ValueError("Final models require the timm preprocessing profile")
+    resize_short = 249
+    interpolation = cv2.INTER_CUBIC
     height, width = image.shape[:2]
     scale = float(resize_short) / min(height, width)
     image = cv2.resize(
@@ -441,14 +444,12 @@ def preprocess(path: Path, mode: str) -> np.ndarray:
     top, left = (height - 224) // 2, (width - 224) // 2
     image = image[top : top + 224, left : left + 224]
     image = image.astype(np.float32) / 255.0
-    if mode == "legacy":
-        image = (image - LEGACY_MEAN) / LEGACY_STD
-    else:
-        image = (image - DEIT_MEAN) / DEIT_STD
+    image = (image - DEIT_MEAN) / DEIT_STD
     return np.ascontiguousarray(image, dtype=np.float32)
 
 
 def build_config(core_mode: str) -> qbruntime.ModelConfig:
+    require_qbruntime()
     config = qbruntime.ModelConfig()
     cluster, core = qbruntime.Cluster, qbruntime.Core
     if core_mode == "single":
@@ -1045,8 +1046,10 @@ def write_summary_markdown(
     )
     passed = (
         run.get("status") == "complete"
-        and completed == len(results)
+        and len(results) > 0
+        and completed == len(results) == run.get("num_models")
         and total_errors == 0
+        and telemetry_ok == len(results)
     )
     wall_hours = sum(result.get("evaluation_wall_seconds", 0) for result in results) / 3600.0
     environment = run.get("environment", {})
@@ -1175,15 +1178,13 @@ def write_summary_markdown(
         best_reduced = max(reduced_rows, key=lambda row: row["top1_delta_pct_point"])
         lines.extend(
             [
-                "- 압축 모델 중 정확도 보존이 가장 좋은 구성은 **%s Reduced**로, Top-1 `%s%%`와 baseline 대비 `%s pp`를 기록했다."
+                "- Reduced 구성 중 baseline 대비 Top-1 손실이 가장 작은 구성은 **%s Reduced**로, Top-1 `%s%%`와 baseline 대비 `%s pp`를 기록했다."
                 % (
                     best_reduced["group"],
                     fmt(best_reduced["top1_pct"], 3),
                     fmt(best_reduced["top1_delta_pct_point"], 3),
                 ),
-                "- NPU 할당 메모리는 압축 여부와 관계없이 같지 않았다. 통합 평가와 독립 프로세스 재검증 모두에서 각 압축 모델의 감소가 동일하게 재현됐다.",
-                "- Patch Slimming은 모든 그룹에서 가장 빠르고 메모리가 가장 작았지만 정확도 손실도 Reduced보다 컸다. 특히 Tiny50은 `-33.062 pp`이므로 정확도 우선 최종 모델로 보기 어렵다.",
-                "- 50% 목표는 Tiny와 Small 모두 정확도 손실이 커졌다. 정확도 우선이라면 이번 결과에서는 **Small30 Reduced**, Tiny가 필요하다면 **Tiny30 Reduced**가 상대적으로 안전한 선택이다.",
+                "- 실행 상태 PASS는 정확도 보존을 뜻하지 않는다. 정확도·지연시간·메모리를 함께 비교하며 독립 메모리 재검증은 해당 결과가 있을 때만 판단한다.",
             ]
         )
 
@@ -1371,12 +1372,27 @@ def write_summary_markdown(
                         fmt(item.get("telemetry_runs"), 0),
                     )
                 )
-            lines.extend(
-                [
-                    "",
-                    "독립 측정은 통합 평가와 동일한 NPU 메모리 peak를 12/12 모델에서 재현했다. Idle은 모든 모델에서 0 MB였으며, 프로세스 분리로 모델 간 allocator 잔존 영향을 배제했다.",
-                ]
+            integrated = {
+                f"{row['group']}__{row['variant']}": row.get("npu_memory_peak_mb")
+                for row in rows if row.get("status") == "ok"
+            }
+            checked = [
+                item for item in isolated.get("models", [])
+                if item.get("status") == "ok"
+                and integrated.get(item.get("model_id")) is not None
+                and item.get("npu_peak_reported_mb") is not None
+            ]
+            matched = sum(
+                item["npu_peak_reported_mb"] == integrated[item["model_id"]]
+                for item in checked
             )
+            zero_idle = sum(item.get("npu_idle_peak_reported_mb") == 0 for item in checked)
+            lines.extend([
+                "",
+                "통합 평가와 비교 가능한 독립 측정 %d개 중 peak 일치 %d개, idle 0 MB %d개. "
+                "이 비교는 관측 메모리 값의 일치이며 내부 activation peak의 보장이 아니다."
+                % (len(checked), matched, zero_idle),
+            ])
         except Exception as exc:
             lines.extend(
                 [
@@ -1424,7 +1440,8 @@ def write_summary_markdown(
             "",
             "- `GFLOPs*`는 ONNX Conv/MatMul/Gemm 정적 shape로 계산했으며 `1 MAC = 2 FLOPs`를 적용했다. Elementwise, normalization, activation, softmax와 컴파일러 fusion/tiling은 포함하지 않는다.",
             "- NPU 메모리·전력·사용률·온도는 `mblt_tracker`가 `mobilint-cli status`를 주기적으로 관측한 값이다. 메모리 피크는 관측 구간의 최대 할당량이며 연산 중 초단기 내부 activation peak와는 다르다.",
-            "- 정확도 비교는 모든 모델에 동일한 이미지 목록, label, `timm` 전처리, Global8 조건을 사용했다.",
+            "- 정확도 비교는 동일한 이미지 목록, label, `%s` 전처리, `%s` 코어 조건을 사용했다."
+            % (run.get("preprocess", "-"), run.get("core_mode", "-")),
             "- 상세 원본 지표와 오류 정보는 같은 폴더의 `benchmark.json`, 분석용 평탄화 지표는 `summary.csv`에 저장된다.",
             "",
         ]
@@ -1570,8 +1587,18 @@ def dry_run(specs: list[ModelSpec], samples: list[tuple[Path, int]], manifest: s
         )
 
 
+def require_qbruntime() -> None:
+    if qbruntime is None:
+        raise RuntimeError(
+            "NPU inference requires the Mobilint qbruntime SDK. "
+            "Use --dry-run or scripts/verify_release.py for host-only checks."
+        )
+
+
 def main() -> int:
     args = parse_args()
+    if not args.dry_run:
+        require_qbruntime()
     specs = discover_models(args)
     val_dir = Path(args.val_dir).expanduser().resolve()
     samples = collect_samples(

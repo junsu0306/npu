@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 import os
-import urllib.request
+from pathlib import Path
 
 PROFILES = {
     "timm": {
@@ -15,15 +15,9 @@ PROFILES = {
         "mean": np.float32([0.5, 0.5, 0.5]),
         "std": np.float32([0.5, 0.5, 0.5]),
     },
-    "legacy": {
-        "resize_short": 256,
-        "interpolation": cv2.INTER_LINEAR,
-        "mean": np.float32([0.485, 0.456, 0.406]),
-        "std": np.float32([0.229, 0.224, 0.225]),
-    },
 }
 
-LABELS_URL = "https://raw.githubusercontent.com/pytorch/hub/master/imagenet_classes.txt"
+DEFAULT_LABELS = Path(__file__).resolve().parents[2] / "assets/labels/imagenet_classes.txt"
 
 
 def preprocess(image_path, profile, layout):
@@ -63,8 +57,7 @@ def load_labels(path):
     if path and os.path.isfile(path):
         with open(path) as handle:
             return [line.strip() for line in handle]
-    with urllib.request.urlopen(LABELS_URL) as r:
-        return r.read().decode().strip().split("\n")
+    return [str(i) for i in range(1000)]
 
 
 def main():
@@ -74,7 +67,7 @@ def main():
     parser.add_argument("--top_k", type=int, default=5)
     parser.add_argument("--preprocess", choices=sorted(PROFILES), default="timm")
     parser.add_argument("--layout", choices=["auto", "nhwc", "nchw"], default="auto")
-    parser.add_argument("--labels", default="imagenet_classes.txt")
+    parser.add_argument("--labels", default=str(DEFAULT_LABELS))
     args = parser.parse_args()
 
     labels = load_labels(args.labels)

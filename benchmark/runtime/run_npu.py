@@ -4,9 +4,10 @@
 latency / FPS 측정 + Top-5 예측 출력.
 
 실행:
-  python3 benchmark/runtime/run_npu.py --mxq assets/mxq/model.mxq --image val_example.JPEG
-  python3 benchmark/runtime/run_npu.py --mxq assets/mxq/model.mxq --runs 50 --warmups 5
+  python3 benchmark/runtime/run_npu.py --mxq MODEL.mxq --image IMAGE.jpg --runs 50 --warmups 10
 """
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -16,7 +17,12 @@ from datetime import datetime
 
 import cv2
 import numpy as np
-import qbruntime
+try:
+    import qbruntime
+except ModuleNotFoundError as exc:
+    if exc.name != "qbruntime":
+        raise
+    qbruntime = None
 
 NPU_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -26,12 +32,6 @@ PREPROCESS_PROFILES = {
         "interpolation": cv2.INTER_CUBIC,
         "mean": np.float32([0.5, 0.5, 0.5]),
         "std": np.float32([0.5, 0.5, 0.5]),
-    },
-    "legacy": {
-        "resize_short": 256,
-        "interpolation": cv2.INTER_LINEAR,
-        "mean": np.float32([0.485, 0.456, 0.406]),
-        "std": np.float32([0.229, 0.224, 0.225]),
     },
 }
 
@@ -90,11 +90,11 @@ def load_labels(path: str) -> list:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mxq",        required=True,            help="MXQ 파일 경로")
-    parser.add_argument("--image",      default=os.path.join(NPU_ROOT, "val_example.JPEG"), help="추론할 이미지")
-    parser.add_argument("--labels",     default=os.path.join(NPU_ROOT, "imagenet_classes.txt"))
+    parser.add_argument("--image", required=True, help="사용자가 준비한 추론 이미지")
+    parser.add_argument("--labels", default=os.path.join(NPU_ROOT, "assets", "labels", "imagenet_classes.txt"))
     parser.add_argument(
         "--preprocess", default="timm", choices=sorted(PREPROCESS_PROFILES),
-        help="timm: AugReg ViT-Tiny recommended; legacy: old ImageNet normalization",
+        help="fixed final AugReg ViT-Tiny/Small preprocessing profile",
     )
     parser.add_argument("--core-mode",  default="global8",
                         choices=["single", "multi", "global", "global4", "global8"],
@@ -115,6 +115,8 @@ def main():
     print(f"코어  : {args.core_mode}, warmup={args.warmups}, runs={args.runs}")
     print(f"전처리: {args.preprocess}\n")
 
+    if qbruntime is None:
+        raise RuntimeError("NPU inference requires the Mobilint qbruntime SDK.")
     acc    = qbruntime.Accelerator(0)
     config = build_config(args.core_mode)
     model  = qbruntime.Model(args.mxq, config)

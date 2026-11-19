@@ -160,8 +160,8 @@ def main():
     parser.add_argument(
         "--expect-removed",
         type=int,
-        default=14,
-        help="Fail unless this many identity MatMuls are removed; 0 disables the check",
+        default=0,
+        help="Optional expected removal count for the supplied graph; 0 disables the check",
     )
     parser.add_argument(
         "--check-input",

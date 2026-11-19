@@ -1,23 +1,57 @@
-# Python virtual environments
-/.venv/
-/.venv-*/
+# Local environments, caches and archives (never submission artifacts).
+/.venv*/
 /venv/
 /env/
 /aries_env/
-
+/.tools/
+/.vscode/
+/past/
 __pycache__/
 *.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+*.log
+*.whl
+*.egg-info/
+compile/**/calib_*.txt
 
-# 자동 생성 / 대용량
-assets/calib_hwc*/
-assets/calib_chw*/
-assets/mxq/
+# Only the final model directories and label metadata are distributed.
+/assets/*
+!/assets/README.md
+!/assets/RELEASE_MANIFEST.json
+!/assets/labels/
+!/assets/onnx/
+!/assets/mxq_final_20261006/
+/assets/onnx/*
+!/assets/onnx/tiny30__baseline__nhwc_b1_npusafe.onnx
+!/assets/onnx/tiny30__reduced__nhwc_b1_npusafe.onnx
+!/assets/onnx/tiny30__patch_slimming__nhwc_b1_npusafe.onnx
+!/assets/onnx/tiny50__baseline__nhwc_b1_npusafe.onnx
+!/assets/onnx/tiny50__reduced__nhwc_b1_npusafe.onnx
+!/assets/onnx/tiny50__patch_slimming__nhwc_b1_npusafe.onnx
+!/assets/onnx/small30__baseline__nhwc_b1_npusafe.onnx
+!/assets/onnx/small30__reduced__nhwc_b1_npusafe.onnx
+!/assets/onnx/small30__patch_slimming__nhwc_b1_npusafe.onnx
+!/assets/onnx/small50__baseline__nhwc_b1_npusafe.onnx
+!/assets/onnx/small50__reduced__nhwc_b1_npusafe.onnx
+!/assets/onnx/small50__patch_slimming__nhwc_b1_npusafe.onnx
+/assets/mxq_final_20261006/*
+!/assets/mxq_final_20261006/tiny30__baseline__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/tiny30__reduced__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/tiny30__patch_slimming__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/tiny50__baseline__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/tiny50__reduced__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/tiny50__patch_slimming__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/small30__baseline__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/small30__reduced__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/small30__patch_slimming__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/small50__baseline__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/small50__reduced__nhwc_b1_npusafe_vt_global8.mxq
+!/assets/mxq_final_20261006/small50__patch_slimming__nhwc_b1_npusafe_vt_global8.mxq
 
-assets/bitconfig_saved/
-compile/**/calib_hwc.txt
-compile/**/calib_chw.txt
-
-# NPU benchmark outputs
-results/*
-!results/final_benchmark/
-!results/final_benchmark/**
+# Keep the measured final evidence; new benchmark runs remain local.
+/results/*
+!/results/README.md
+!/results/final_benchmark/
+/results/final_benchmark/*
+!/results/final_benchmark/final_20261015/

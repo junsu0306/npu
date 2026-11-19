@@ -1,0 +1,8 @@
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.onnx binary
+*.mxq binary
+*.npy binary
+# Original measurement files retain their exact bytes, including CSV newlines.
+results/final_benchmark/final_20261015/** -text
